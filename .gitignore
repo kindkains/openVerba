@@ -1,0 +1,25 @@
+# Konfiguration mit Geheimnissen — nur .env.example gehört ins Repo
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tests und Werkzeuge
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

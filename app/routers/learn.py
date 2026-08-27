@@ -1,0 +1,313 @@
+"""Der Lernablauf.
+
+Eine Lerneinheit wird beim Start zusammengestellt und dann abgearbeitet. Der Zustand
+der laufenden Einheit steckt in einem signierten Cookie — so braucht openVerba keine
+serverseitige Sitzungshaltung und läuft auch hinter mehreren Prozessen.
+"""
+
+from __future__ import annotations
+
+import random
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, URLSafeSerializer
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app import auth, checker, leitner
+from app.config import get_settings
+from app.db import get_session
+from app.deps import require_user
+from app.models import (
+    DIRECTION_BW,
+    DIRECTION_FW,
+    SIDE_DE,
+    SIDE_FOREIGN,
+    Language,
+    LearnProgress,
+    User,
+    VocabEntry,
+    VocabSet,
+)
+from app.templating import render
+
+router = APIRouter(prefix="/learn")
+
+ROUND_COOKIE = "openverba_round"
+
+SCOPE_SET = "set"
+SCOPE_LANGUAGE = "language"
+SCOPE_GLOBAL = "global"
+
+MODE_FW = "fw"
+MODE_BW = "bw"
+MODE_MIXED = "mixed"
+
+
+def _round_serializer() -> URLSafeSerializer:
+    return URLSafeSerializer(get_settings().secret_key, salt="openverba-round")
+
+
+def _read_round(request: Request) -> dict | None:
+    raw = request.cookies.get(ROUND_COOKIE)
+    if not raw:
+        return None
+    try:
+        data = _round_serializer().loads(raw)
+    except BadSignature:
+        return None
+    return data if isinstance(data, dict) and data.get("items") else None
+
+
+def _store_round(response, data: dict) -> None:
+    response.set_cookie(
+        ROUND_COOKIE,
+        _round_serializer().dumps(data),
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 6,
+    )
+
+
+def _entries_for_scope(
+    session: Session, user: User, scope: str, scope_id: int
+) -> list[VocabEntry]:
+    query = select(VocabEntry).join(VocabSet, VocabEntry.set_id == VocabSet.id)
+    if scope == SCOPE_SET:
+        query = query.where(VocabSet.id == scope_id, VocabSet.owner_id == user.id)
+    elif scope == SCOPE_LANGUAGE:
+        query = query.where(
+            VocabSet.language_id == scope_id, VocabSet.owner_id == user.id
+        )
+    else:  # globaler Pool: alle Vokabeln aller Nutzer in dieser Sprache
+        query = query.where(VocabSet.language_id == scope_id)
+    return list(session.scalars(query))
+
+
+def _directions(mode: str, rng: random.Random) -> list[str]:
+    if mode == MODE_FW:
+        return [DIRECTION_FW]
+    if mode == MODE_BW:
+        return [DIRECTION_BW]
+    return [rng.choice([DIRECTION_FW, DIRECTION_BW])]
+
+
+def _progress_map(
+    session: Session, user: User, entry_ids: list[int]
+) -> dict[tuple[int, str], LearnProgress]:
+    if not entry_ids:
+        return {}
+    rows = session.scalars(
+        select(LearnProgress).where(
+            LearnProgress.user_id == user.id, LearnProgress.entry_id.in_(entry_ids)
+        )
+    )
+    return {(row.entry_id, row.direction): row for row in rows}
+
+
+@router.get("")
+def start_form(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+):
+    sets = list(
+        session.scalars(
+            select(VocabSet).where(VocabSet.owner_id == user.id).order_by(VocabSet.name)
+        )
+    )
+    languages = list(
+        session.scalars(select(Language).where(Language.active).order_by(Language.name))
+    )
+    return render(
+        request,
+        "learn_start.html",
+        {"sets": sets, "languages": languages, "session_size": get_settings().session_size},
+        user=user,
+    )
+
+
+@router.post("/start")
+def start(
+    request: Request,
+    source: str = Form(...),
+    mode: str = Form(MODE_MIXED),
+    csrf_token: str = Form(""),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+):
+    if not auth.csrf_valid(request, csrf_token):
+        return RedirectResponse("/learn", status_code=303)
+
+    # source kommt als "scope:id", z.B. "set:3" oder "global:1"
+    scope, _, raw_id = source.partition(":")
+    if not raw_id.isdigit() or scope not in (SCOPE_SET, SCOPE_LANGUAGE, SCOPE_GLOBAL):
+        return RedirectResponse("/learn", status_code=303)
+    scope_id = int(raw_id)
+
+    entries = _entries_for_scope(session, user, scope, scope_id)
+    if not entries:
+        return render(
+            request,
+            "learn_empty.html",
+            {},
+            user=user,
+        )
+
+    rng = random.Random()
+    entry_ids = [e.id for e in entries]
+    progress = _progress_map(session, user, entry_ids)
+    now = datetime.now(timezone.utc)
+
+    candidates: list[leitner.Candidate] = []
+    for entry in entries:
+        for direction in _directions(mode, rng):
+            row = progress.get((entry.id, direction))
+            due_at = row.due_at if row else None
+            if due_at is not None and due_at.tzinfo is None:
+                due_at = due_at.replace(tzinfo=timezone.utc)
+            candidates.append(
+                leitner.Candidate(
+                    entry_id=entry.id,
+                    direction=direction,
+                    box=row.box if row else None,
+                    due_at=due_at,
+                )
+            )
+
+    chosen = leitner.select(candidates, get_settings().session_size, now, rng)
+    if not chosen:
+        return render(request, "learn_empty.html", {}, user=user)
+
+    data = {
+        "items": [[c.entry_id, c.direction] for c in chosen],
+        "i": 0,
+        "ok": 0,
+        "bad": 0,
+    }
+    response = RedirectResponse("/learn/question", status_code=303)
+    _store_round(response, data)
+    return response
+
+
+@router.get("/question")
+def question(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+):
+    data = _read_round(request)
+    if data is None:
+        return RedirectResponse("/learn", status_code=303)
+    if data["i"] >= len(data["items"]):
+        return RedirectResponse("/learn/done", status_code=303)
+
+    entry_id, direction = data["items"][data["i"]]
+    entry = session.get(VocabEntry, entry_id)
+    if entry is None:
+        # Vokabel wurde zwischenzeitlich gelöscht — überspringen.
+        data["i"] += 1
+        response = RedirectResponse("/learn/question", status_code=303)
+        _store_round(response, data)
+        return response
+
+    ask_side = SIDE_FOREIGN if direction == DIRECTION_FW else SIDE_DE
+    return render(
+        request,
+        "learn_question.html",
+        {
+            "prompt": entry.prompt(ask_side),
+            "direction": direction,
+            "position": data["i"] + 1,
+            "total": len(data["items"]),
+            "correct": data["ok"],
+            "wrong": data["bad"],
+        },
+        user=user,
+    )
+
+
+@router.post("/answer")
+def answer(
+    request: Request,
+    given: str = Form(""),
+    csrf_token: str = Form(""),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+):
+    data = _read_round(request)
+    if data is None or not auth.csrf_valid(request, csrf_token):
+        return RedirectResponse("/learn", status_code=303)
+    if data["i"] >= len(data["items"]):
+        return RedirectResponse("/learn/done", status_code=303)
+
+    entry_id, direction = data["items"][data["i"]]
+    entry = session.get(VocabEntry, entry_id)
+    if entry is None:
+        data["i"] += 1
+        response = RedirectResponse("/learn/question", status_code=303)
+        _store_round(response, data)
+        return response
+
+    ask_side = SIDE_FOREIGN if direction == DIRECTION_FW else SIDE_DE
+    answer_side = SIDE_DE if direction == DIRECTION_FW else SIDE_FOREIGN
+    targets = [v.text for v in entry.side(answer_side)]
+
+    result = checker.check(
+        given, targets, typo_tolerance=get_settings().typo_tolerance
+    )
+
+    now = datetime.now(timezone.utc)
+    row = session.get(LearnProgress, (user.id, entry_id, direction))
+    if row is None:
+        row = LearnProgress(
+            user_id=user.id, entry_id=entry_id, direction=direction, box=1, due_at=now
+        )
+        session.add(row)
+
+    row.box = leitner.next_box(row.box, result.correct)
+    row.due_at = leitner.due_after(row.box, now)
+    row.last_seen_at = now
+    if result.correct:
+        row.correct_count += 1
+        data["ok"] += 1
+    else:
+        row.wrong_count += 1
+        data["bad"] += 1
+    session.commit()
+
+    data["i"] += 1
+    response = render(
+        request,
+        "learn_feedback.html",
+        {
+            "prompt": entry.prompt(ask_side),
+            "given": given,
+            "result": result,
+            "note": entry.note,
+            "box": row.box,
+            "position": data["i"],
+            "total": len(data["items"]),
+            "finished": data["i"] >= len(data["items"]),
+        },
+        user=user,
+    )
+    _store_round(response, data)
+    return response
+
+
+@router.get("/done")
+def done(request: Request, user: User = Depends(require_user)):
+    data = _read_round(request)
+    if data is None:
+        return RedirectResponse("/learn", status_code=303)
+    response = render(
+        request,
+        "learn_done.html",
+        {"correct": data["ok"], "wrong": data["bad"], "total": len(data["items"])},
+        user=user,
+    )
+    response.delete_cookie(ROUND_COOKIE)
+    return response

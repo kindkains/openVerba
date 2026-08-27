@@ -1,0 +1,60 @@
+# openVerba — läuft unverändert auf vServer, Raspberry Pi und Docker Desktop.
+# Sämtliche Einstellungen kommen aus der .env, siehe .env.example.
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-openverba}
+      MARIADB_USER: ${MARIADB_USER:-openverba}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?MARIADB_PASSWORD fehlt in der .env}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD fehlt in der .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - openverba-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Bewusst kein Port nach außen: Die Datenbank ist nur für app erreichbar.
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OPENVERBA_SECRET_KEY: ${OPENVERBA_SECRET_KEY:?OPENVERBA_SECRET_KEY fehlt in der .env}
+      OPENVERBA_BASE_URL: ${OPENVERBA_BASE_URL:-http://localhost:8080}
+      OPENVERBA_SESSION_SIZE: ${OPENVERBA_SESSION_SIZE:-20}
+      OPENVERBA_TYPO_TOLERANCE: ${OPENVERBA_TYPO_TOLERANCE:-true}
+      OPENVERBA_ADMIN_USER: ${OPENVERBA_ADMIN_USER:-admin}
+      OPENVERBA_ADMIN_PASSWORD: ${OPENVERBA_ADMIN_PASSWORD:?OPENVERBA_ADMIN_PASSWORD fehlt in der .env}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-openverba}
+      MARIADB_USER: ${MARIADB_USER:-openverba}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      DB_HOST: db
+      DB_PORT: "3306"
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    ports:
+      - "${OPENVERBA_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  openverba-db:
