@@ -1,5 +1,8 @@
-# Konfiguration mit Geheimnissen — nur .env.example gehört ins Repo
-.env
+# Konfiguration mit Geheimnissen — nur .env.example gehört ins Repo.
+# Bewusst als Muster: Varianten wie .env.orig, .env.prod oder .env.bak-2026-01-01
+# rutschen sonst an einem blossen ".env" vorbei und landen im Repo.
+.env*
+!.env.example
 
 # Python
 __pycache__/
