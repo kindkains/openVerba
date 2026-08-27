@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Lernen &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Lernen</h1>
+
+<form method="post" action="/learn/start" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <label>Was möchtest du lernen?
+    <select name="source" required>
+      {% if sets %}
+      <optgroup label="Einzelnes Set">
+        {% for s in sets %}
+        <option value="set:{{ s.id }}">{{ s.name }} ({{ s.language.name }})</option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+      <optgroup label="Alle meine Sets einer Sprache">
+        {% for l in languages %}
+        <option value="language:{{ l.id }}">Alles auf {{ l.name }}</option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="Alle Vokabeln aller Benutzer">
+        {% for l in languages %}
+        <option value="global:{{ l.id }}">Gemeinsamer Pool {{ l.name }}</option>
+        {% endfor %}
+      </optgroup>
+    </select>
+  </label>
+
+  <label>Abfragerichtung
+    <select name="mode">
+      <option value="mixed">Zufällig gemischt</option>
+      <option value="fw">Fremdsprache &rarr; Deutsch</option>
+      <option value="bw">Deutsch &rarr; Fremdsprache</option>
+    </select>
+  </label>
+
+  <button type="submit">Los geht's</button>
+  <p class="muted">Eine Einheit umfasst bis zu {{ session_size }} Vokabeln.</p>
+</form>
+{% endblock %}

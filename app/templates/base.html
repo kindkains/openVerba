@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}openVerba{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">openVerba</a>
+  {% if user %}
+  <nav>
+    <a href="/learn">Lernen</a>
+    <a href="/sets">Meine Vokabeln</a>
+    {% if user.is_admin %}<a href="/admin">Verwaltung</a>{% endif %}
+    <a href="/password">Passwort</a>
+    <a href="/logout">Abmelden</a>
+  </nav>
+  <span class="who">{{ user.username }}</span>
+  {% endif %}
+</header>
+
+<main>
+  {% if error %}<p class="msg error">{{ error }}</p>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer>
+  <span>openVerba &middot; AGPL-3.0</span>
+</footer>
+</body>
+</html>

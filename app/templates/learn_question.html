@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Vokabel {{ position }}/{{ total }} &middot; openVerba{% endblock %}
+{% block content %}
+<div class="progress">
+  <span>Vokabel {{ position }} von {{ total }}</span>
+  <span class="score">richtig {{ correct }} &middot; falsch {{ wrong }}</span>
+</div>
+
+<div class="card quiz">
+  <p class="direction">
+    {% if direction == 'fw' %}Übersetze ins Deutsche{% else %}Übersetze in die Fremdsprache{% endif %}
+  </p>
+  <p class="prompt">{{ prompt }}</p>
+
+  <form method="post" action="/learn/answer">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="given" autofocus autocomplete="off" autocapitalize="off"
+           autocorrect="off" spellcheck="false" placeholder="Deine Antwort">
+    <button type="submit">Prüfen</button>
+  </form>
+</div>
+
+<p class="muted"><a href="/learn">Abbrechen</a></p>
+{% endblock %}

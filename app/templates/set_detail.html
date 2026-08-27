@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ vocab_set.name }} &middot; openVerba{% endblock %}
+{% block content %}
+<h1>{{ vocab_set.name }}</h1>
+<p class="muted">{{ vocab_set.language.name }}{% if vocab_set.description %} &middot; {{ vocab_set.description }}{% endif %}</p>
+
+<h2>Neue Vokabel</h2>
+<form method="post" action="/sets/{{ vocab_set.id }}/entries" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>{{ vocab_set.language.name }}
+    <input type="text" name="foreign" required
+           value="{{ form.foreign if form else '' }}" placeholder="to run; to sprint">
+  </label>
+  <label>Deutsch
+    <input type="text" name="german" required
+           value="{{ form.german if form else '' }}" placeholder="rennen; sprinten">
+  </label>
+  <label>Notiz (optional, wird nie abgefragt)
+    <input type="text" name="note" value="{{ form.note if form else '' }}"
+           placeholder="currere, curro, cucurri, cursum">
+  </label>
+  <button type="submit">Hinzufügen</button>
+  <p class="muted">
+    Mehrere gültige Antworten mit Semikolon trennen. Die erste ist die, die beim
+    Abfragen angezeigt wird.
+  </p>
+</form>
+
+<h2>Vokabeln ({{ entries|length }})</h2>
+{% if entries %}
+<table>
+  <tr><th>{{ vocab_set.language.name }}</th><th>Deutsch</th><th>Notiz</th><th></th></tr>
+  {% for e in entries %}
+  <tr>
+    <td>{{ e.side(side_foreign) | map(attribute='text') | join('; ') }}</td>
+    <td>{{ e.side(side_de) | map(attribute='text') | join('; ') }}</td>
+    <td class="muted">{{ e.note or '' }}</td>
+    <td class="actions">
+      <form method="post" action="/entries/{{ e.id }}/delete" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="small danger">Löschen</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">Noch keine Vokabeln in diesem Set.</p>
+{% endif %}
+
+<p><a href="/sets">Zurück zur Übersicht</a></p>
+{% endblock %}

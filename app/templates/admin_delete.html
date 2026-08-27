@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Benutzer löschen &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Benutzer löschen</h1>
+
+<div class="msg warn">
+  <p>
+    <strong>{{ target.username }}</strong> wird gelöscht — zusammen mit
+    <strong>{{ set_count }}</strong> Set(s), <strong>{{ entry_count }}</strong> Vokabel(n)
+    und dem gesamten Lernfortschritt.
+  </p>
+  <p>Das lässt sich nicht rückgängig machen.</p>
+</div>
+
+<form method="post" action="/admin/users/{{ target.id }}/delete" class="card narrow">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="danger">Endgültig löschen</button>
+  <a href="/admin">Abbrechen</a>
+</form>
+{% endblock %}

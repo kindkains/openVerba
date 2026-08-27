@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Meine Vokabeln &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Meine Vokabeln</h1>
+
+{% if sets %}
+<table>
+  <tr><th>Set</th><th>Sprache</th><th>Vokabeln</th><th></th></tr>
+  {% for s in sets %}
+  <tr>
+    <td><a href="/sets/{{ s.id }}">{{ s.name }}</a>
+      {% if s.description %}<div class="muted">{{ s.description }}</div>{% endif %}
+    </td>
+    <td>{{ s.language.name }}</td>
+    <td>{{ counts.get(s.id, 0) }}</td>
+    <td class="actions">
+      <form method="post" action="/sets/{{ s.id }}/delete" class="inline"
+            onsubmit="return confirm('Set „{{ s.name }}“ mit allen Vokabeln löschen?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="small danger">Löschen</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">Noch kein Set angelegt. Fang unten an.</p>
+{% endif %}
+
+<h2>Neues Set</h2>
+{% if languages %}
+<form method="post" action="/sets" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Name <input type="text" name="name" required placeholder="Unit 3"></label>
+  <label>Sprache
+    <select name="language_id" required>
+      {% for l in languages %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Beschreibung (optional) <input type="text" name="description"></label>
+  <button type="submit">Anlegen</button>
+</form>
+{% else %}
+<p class="msg warn">Es ist noch keine Sprache angelegt. Das macht der Admin.</p>
+{% endif %}
+{% endblock %}

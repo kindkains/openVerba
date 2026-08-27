@@ -262,8 +262,16 @@ def answer(
     now = datetime.now(timezone.utc)
     row = session.get(LearnProgress, (user.id, entry_id, direction))
     if row is None:
+        # Zähler ausdrücklich auf 0: Die Spaltendefaults greifen erst beim INSERT,
+        # gerechnet wird aber schon vorher.
         row = LearnProgress(
-            user_id=user.id, entry_id=entry_id, direction=direction, box=1, due_at=now
+            user_id=user.id,
+            entry_id=entry_id,
+            direction=direction,
+            box=1,
+            due_at=now,
+            correct_count=0,
+            wrong_count=0,
         )
         session.add(row)
 

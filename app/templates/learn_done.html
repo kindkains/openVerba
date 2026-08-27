@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Auswertung &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Geschafft!</h1>
+
+<div class="card narrow summary">
+  <p class="big">{{ correct }} / {{ total }}</p>
+  <p class="muted">richtig beantwortet{% if wrong %}, {{ wrong }} daneben{% endif %}</p>
+</div>
+
+<p><a class="button" href="/learn">Noch eine Runde</a></p>
+{% endblock %}

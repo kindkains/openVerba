@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Neues Passwort &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Neues Passwort setzen</h1>
+
+{% if done %}
+  <p class="msg ok">Das Passwort ist gesetzt. Du kannst dich jetzt anmelden.</p>
+  <p><a href="/login">Zur Anmeldung</a></p>
+{% else %}
+  <form method="post" action="/reset/{{ token }}" class="card narrow">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Neues Passwort
+      <input type="password" name="new_password" required autofocus autocomplete="new-password">
+    </label>
+    <label>Noch einmal
+      <input type="password" name="repeat_password" required autocomplete="new-password">
+    </label>
+    <button type="submit">Passwort setzen</button>
+  </form>
+{% endif %}
+{% endblock %}

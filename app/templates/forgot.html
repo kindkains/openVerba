@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Passwort vergessen &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Passwort vergessen</h1>
+
+{% if done %}
+  <p class="msg ok">
+    Die Anfrage ist raus. Falls es den Benutzernamen gibt, bekommt der Admin sie zu
+    sehen und gibt dir einen Link zum Zurücksetzen. Hast du eine Mailadresse
+    hinterlegt, ist der Link zusätzlich unterwegs.
+  </p>
+  <p><a href="/login">Zurück zur Anmeldung</a></p>
+{% else %}
+  <form method="post" action="/forgot" class="card narrow">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Benutzername
+      <input type="text" name="username" required autofocus>
+    </label>
+    <button type="submit">Anfrage absenden</button>
+  </form>
+  <p class="muted"><a href="/login">Zurück zur Anmeldung</a></p>
+{% endif %}
+{% endblock %}

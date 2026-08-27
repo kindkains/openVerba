@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -19,7 +21,29 @@ from app.templating import render
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 log = logging.getLogger("openverba")
 
-app = FastAPI(title="openVerba", version=__version__, docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        log.info("openVerba %s gestartet, Datenbank erreichbar", __version__)
+    except SQLAlchemyError as exc:
+        # Kein harter Abbruch: Die Anwendung soll sich erholen, sobald die DB da ist.
+        log.error(
+            "openVerba %s gestartet, Datenbank aber nicht erreichbar: %s",
+            __version__,
+            exc,
+        )
+    yield
+
+
+app = FastAPI(
+    title="openVerba",
+    version=__version__,
+    docs_url=None,
+    redoc_url=None,
+    lifespan=lifespan,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -81,13 +105,3 @@ def unhandled(request: Request, exc: Exception):
     )
 
 
-@app.on_event("startup")
-def log_startup() -> None:
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        log.info("openVerba %s gestartet, Datenbank erreichbar", __version__)
-    except SQLAlchemyError as exc:
-        # Kein harter Abbruch: Die Anwendung soll sich erholen, sobald die DB da ist.
-        log.error("openVerba %s gestartet, Datenbank aber nicht erreichbar: %s",
-                  __version__, exc)
