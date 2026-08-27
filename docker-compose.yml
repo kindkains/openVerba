@@ -48,7 +48,10 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
     ports:
-      - "${OPENVERBA_PORT:-8080}:8080"
+      # Bewusst nur auf Loopback: Hinter einem Reverse-Proxy hat der Port nichts im
+      # offenen Netz verloren, sonst ist die Anwendung unverschluesselt erreichbar.
+      # Fuer direkten Zugriff aus dem LAN das "127.0.0.1:" entfernen.
+      - "127.0.0.1:${OPENVERBA_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 30s

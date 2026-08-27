@@ -51,6 +51,16 @@ def verify_password(password: str, password_hash: str) -> bool:
 # --- Sessions --------------------------------------------------------------------
 
 
+def cookie_secure() -> bool:
+    """Ob Cookies nur über HTTPS gesendet werden dürfen.
+
+    Richtet sich nach `OPENVERBA_BASE_URL`. Damit setzt eine öffentliche Installation
+    hinter TLS automatisch das Secure-Flag, während eine lokale Installation auf
+    http://localhost weiterhin funktioniert.
+    """
+    return get_settings().base_url.startswith("https://")
+
+
 def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().secret_key, salt="openverba-session")
 

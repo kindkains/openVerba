@@ -57,6 +57,7 @@ def login(
         auth.SESSION_COOKIE,
         auth.issue_session(user.id),
         httponly=True,
+        secure=auth.cookie_secure(),
         samesite="lax",
         max_age=auth.SESSION_MAX_AGE,
     )

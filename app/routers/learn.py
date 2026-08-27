@@ -66,6 +66,7 @@ def _store_round(response, data: dict) -> None:
         ROUND_COOKIE,
         _round_serializer().dumps(data),
         httponly=True,
+        secure=auth.cookie_secure(),
         samesite="lax",
         max_age=60 * 60 * 6,
     )

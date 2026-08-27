@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse
 
-from app.auth import CSRF_COOKIE, csrf_token_for
+from app.auth import CSRF_COOKIE, cookie_secure, csrf_token_for
 from app.models import User
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -41,6 +41,7 @@ def render(
             CSRF_COOKIE,
             token,
             httponly=False,  # das Formular muss den Wert mitsenden können
+            secure=cookie_secure(),
             samesite="lax",
             max_age=60 * 60 * 24 * 14,
         )
