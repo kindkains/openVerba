@@ -2,6 +2,10 @@
 {% block title %}{{ vocab_set.name }} &middot; openVerba{% endblock %}
 {% block content %}
 <h1>{{ vocab_set.name }}</h1>
+{% if user.is_admin and vocab_set.owner_id != user.id %}
+<p class="msg warn">Dieses Set gehört <strong>{{ vocab_set.owner.username }}</strong> —
+  du bearbeitest es als Admin.</p>
+{% endif %}
 <p class="muted">{{ vocab_set.language.name }}{% if vocab_set.description %} &middot; {{ vocab_set.description }}{% endif %}</p>
 
 <h2>Neue Vokabel</h2>

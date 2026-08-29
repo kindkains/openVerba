@@ -99,6 +99,9 @@ class VocabSet(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    # Papierkorb: Löschen setzt nur diesen Stempel. Wiederherstellen und endgültiges
+    # Löschen sind Admin-Sache.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     owner: Mapped["User"] = relationship(back_populates="sets")
     language: Mapped["Language"] = relationship(back_populates="sets")

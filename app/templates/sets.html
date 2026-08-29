@@ -1,21 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Meine Vokabeln &middot; openVerba{% endblock %}
 {% block content %}
-<h1>Meine Vokabeln</h1>
+<h1>{{ 'Alle Vokabelsets' if user.is_admin else 'Meine Vokabeln' }}</h1>
+{% if user.is_admin %}
+<p class="muted">Als Admin siehst und bearbeitest du die Sets aller Benutzer.</p>
+{% endif %}
 
 {% if sets %}
 <table>
-  <tr><th>Set</th><th>Sprache</th><th>Vokabeln</th><th></th></tr>
+  <tr><th>Set</th>{% if user.is_admin %}<th>Besitzer</th>{% endif %}<th>Sprache</th><th>Vokabeln</th><th></th></tr>
   {% for s in sets %}
   <tr>
     <td><a href="/sets/{{ s.id }}">{{ s.name }}</a>
       {% if s.description %}<div class="muted">{{ s.description }}</div>{% endif %}
     </td>
+    {% if user.is_admin %}<td>{{ s.owner.username }}</td>{% endif %}
     <td>{{ s.language.name }}</td>
     <td>{{ counts.get(s.id, 0) }}</td>
     <td class="actions">
       <form method="post" action="/sets/{{ s.id }}/delete" class="inline"
-            onsubmit="return confirm('Set „{{ s.name }}“ mit allen Vokabeln löschen?');">
+            onsubmit="return confirm('Set „{{ s.name }}“ mit allen Vokabeln löschen? Der Admin kann es aus dem Papierkorb wiederherstellen.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="small danger">Löschen</button>
       </form>

@@ -28,6 +28,13 @@
     </select>
   </label>
 
+  <label>Wie viele Vokabeln?
+    <input type="number" name="size" value="{{ session_size }}" min="1"
+           max="{{ max_round_size }}">
+  </label>
+  <p class="muted">Die Zahl gilt beim Mischen — alle Sets einer Sprache oder der
+    gemeinsame Pool. Ein einzelnes Set wird immer komplett abgefragt.</p>
+
   <label>Abfragerichtung
     <select name="mode">
       <option value="mixed">Zufällig gemischt</option>
@@ -37,6 +44,5 @@
   </label>
 
   <button type="submit">Los geht's</button>
-  <p class="muted">Eine Einheit umfasst bis zu {{ session_size }} Vokabeln.</p>
 </form>
 {% endblock %}

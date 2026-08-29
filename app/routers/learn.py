@@ -45,6 +45,10 @@ MODE_FW = "fw"
 MODE_BW = "bw"
 MODE_MIXED = "mixed"
 
+# Obergrenze pro Einheit: Der Rundenzustand steckt in einem Cookie, und Browser
+# schneiden Cookies oberhalb von ~4 KB kommentarlos ab.
+MAX_ROUND_SIZE = 200
+
 
 def _round_serializer() -> URLSafeSerializer:
     return URLSafeSerializer(get_settings().secret_key, salt="openverba-round")
@@ -75,7 +79,11 @@ def _store_round(response, data: dict) -> None:
 def _entries_for_scope(
     session: Session, user: User, scope: str, scope_id: int
 ) -> list[VocabEntry]:
-    query = select(VocabEntry).join(VocabSet, VocabEntry.set_id == VocabSet.id)
+    query = (
+        select(VocabEntry)
+        .join(VocabSet, VocabEntry.set_id == VocabSet.id)
+        .where(VocabSet.deleted_at.is_(None))
+    )
     if scope == SCOPE_SET:
         query = query.where(VocabSet.id == scope_id, VocabSet.owner_id == user.id)
     elif scope == SCOPE_LANGUAGE:
@@ -125,7 +133,12 @@ def start_form(
     return render(
         request,
         "learn_start.html",
-        {"sets": sets, "languages": languages, "session_size": get_settings().session_size},
+        {
+            "sets": sets,
+            "languages": languages,
+            "session_size": get_settings().session_size,
+            "max_round_size": MAX_ROUND_SIZE,
+        },
         user=user,
     )
 
@@ -135,6 +148,7 @@ def start(
     request: Request,
     source: str = Form(...),
     mode: str = Form(MODE_MIXED),
+    size: str = Form(""),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
@@ -178,7 +192,17 @@ def start(
                 )
             )
 
-    chosen = leitner.select(candidates, get_settings().session_size, now, rng)
+    # Ein einzelnes Set wird immer komplett abgefragt. Die Wunschgröße zählt nur
+    # beim Mischen — alle eigenen Sets einer Sprache oder der gemeinsame Pool.
+    if scope == SCOPE_SET:
+        wanted = len(candidates)
+    elif size.strip().isdigit():
+        wanted = int(size.strip())
+    else:
+        wanted = get_settings().session_size
+    wanted = max(1, min(wanted, MAX_ROUND_SIZE))
+
+    chosen = leitner.select(candidates, wanted, now, rng)
     if not chosen:
         return render(request, "learn_empty.html", {}, user=user)
 

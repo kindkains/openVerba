@@ -41,7 +41,9 @@ einstellbar). Beim ersten Anmelden als Admin verlangt openVerba einen Passwortwe
 ## Wie es benutzt wird
 
 1. **Als Admin** unter *Verwaltung* die Benutzer anlegen. Eine Selbstregistrierung gibt es
-   bewusst nicht. Die Mailadresse ist optional — Kinder haben oft keine.
+   bewusst nicht. Die Mailadresse ist optional — Kinder haben oft keine. Der Admin sieht
+   und bearbeitet zudem die Vokabelsets aller Benutzer und kann Passwörter direkt setzen
+   (wahlweise mit erzwungenem Wechsel bei der nächsten Anmeldung).
 2. **Als Benutzer** unter *Meine Vokabeln* ein Set anlegen (etwa „Unit 3“) und Vokabeln
    eintragen. Mehrere gültige Antworten werden mit Semikolon getrennt:
    `to run; to sprint` ↔ `rennen; sprinten`. Die erste Variante ist die, die beim
@@ -55,6 +57,12 @@ einstellbar). Beim ersten Anmelden als Admin verlangt openVerba einen Passwortwe
 
 Fünf Leitner-Boxen. Richtig beantwortet geht eine Vokabel eine Box hoch, falsch fällt sie
 auf Box 1 zurück. Die Wiedervorlage richtet sich nach der Box: sofort, 1, 3, 7, 21 Tage.
+Eine falsch beantwortete Vokabel ist damit sofort wieder fällig und kommt in der
+nächsten Einheit als erste dran.
+
+**Ein einzelnes Set wird immer komplett abgefragt.** Nur beim Mischen — alle eigenen
+Sets einer Sprache oder der gemeinsame Pool — greift die Einheitsgröße: Standard sind
+20 Vokabeln (`OPENVERBA_SESSION_SIZE`), vor dem Start frei wählbar, Obergrenze 200.
 
 Eine Einheit wird in dieser Reihenfolge aufgefüllt: fällige Vokabeln (niedrigste Box
 zuerst), dann noch nie gesehene, dann der Rest. **Damit entsteht kein Rückstau** — wer drei
@@ -75,6 +83,13 @@ gilt als `amare`. Artikel und Infinitiv-Marker dürfen fehlen oder dastehen (`de
 
 Ein Tippfehler wird ab fünf Zeichen Länge verziehen, die Rückmeldung zeigt dann die
 richtige Schreibweise. Abschaltbar über `OPENVERBA_TYPO_TOLERANCE=false`.
+
+## Gelöschte Sets: der Papierkorb
+
+Löscht ein Benutzer ein Set, verschwindet es nur aus seiner Sicht und aus allen
+Abfragen — tatsächlich liegt es im Papierkorb. Der Admin sieht das in der Verwaltung,
+kann das Set samt Lernfortschritt wiederherstellen oder es endgültig löschen.
+Endgültiges Löschen geht nur aus dem Papierkorb heraus, nie direkt.
 
 ## Passwort vergessen
 

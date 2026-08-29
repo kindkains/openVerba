@@ -6,6 +6,8 @@ trägt neue Wörter ein, sobald sie drankommen.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -41,9 +43,14 @@ def parse_variants(raw: str) -> list[str]:
     return seen
 
 
-def _own_set(session: Session, user: User, set_id: int) -> VocabSet | None:
+def _editable_set(session: Session, user: User, set_id: int) -> VocabSet | None:
+    """Das Set, sofern der Nutzer es bearbeiten darf: der Besitzer — oder der Admin,
+    der bei allen Nutzern nachpflegen kann."""
     vocab_set = session.get(VocabSet, set_id)
-    if vocab_set is None or vocab_set.owner_id != user.id:
+    if vocab_set is None or vocab_set.deleted_at is not None:
+        # Was im Papierkorb liegt, wird nur über den Adminbereich angefasst.
+        return None
+    if vocab_set.owner_id != user.id and not user.is_admin:
         return None
     return vocab_set
 
@@ -54,11 +61,17 @@ def list_sets(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ):
-    sets = list(
-        session.scalars(
-            select(VocabSet).where(VocabSet.owner_id == user.id).order_by(VocabSet.name)
-        )
+    # Der Admin sieht die Sets aller Nutzer, alle anderen nur die eigenen.
+    query = (
+        select(VocabSet)
+        .join(User, VocabSet.owner_id == User.id)
+        .where(VocabSet.deleted_at.is_(None))
     )
+    if user.is_admin:
+        query = query.order_by(User.username, VocabSet.name)
+    else:
+        query = query.where(VocabSet.owner_id == user.id).order_by(VocabSet.name)
+    sets = list(session.scalars(query))
     languages = list(
         session.scalars(select(Language).where(Language.active).order_by(Language.name))
     )
@@ -104,9 +117,11 @@ def delete_set(
     session: Session = Depends(get_session),
 ):
     if auth.csrf_valid(request, csrf_token):
-        vocab_set = _own_set(session, user, set_id)
+        vocab_set = _editable_set(session, user, set_id)
         if vocab_set is not None:
-            session.delete(vocab_set)
+            # Nur in den Papierkorb — endgültig löschen kann der Admin, und ein
+            # versehentlich gelöschtes Set lässt sich so wiederherstellen.
+            vocab_set.deleted_at = datetime.now(timezone.utc)
             session.commit()
     return RedirectResponse("/sets", status_code=303)
 
@@ -118,7 +133,7 @@ def set_detail(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ):
-    vocab_set = _own_set(session, user, set_id)
+    vocab_set = _editable_set(session, user, set_id)
     if vocab_set is None:
         return RedirectResponse("/sets", status_code=303)
     entries = sorted(vocab_set.entries, key=lambda e: e.id or 0, reverse=True)
@@ -146,7 +161,7 @@ def add_entry(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ):
-    vocab_set = _own_set(session, user, set_id)
+    vocab_set = _editable_set(session, user, set_id)
     if vocab_set is None:
         return RedirectResponse("/sets", status_code=303)
 
@@ -209,7 +224,7 @@ def delete_entry(
     if entry is None:
         return RedirectResponse("/sets", status_code=303)
     set_id = entry.set_id
-    if auth.csrf_valid(request, csrf_token) and _own_set(session, user, set_id):
+    if auth.csrf_valid(request, csrf_token) and _editable_set(session, user, set_id):
         session.delete(entry)
         session.commit()
     return RedirectResponse(f"/sets/{set_id}", status_code=303)

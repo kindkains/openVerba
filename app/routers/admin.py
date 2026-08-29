@@ -28,6 +28,7 @@ def _entry_counts(session: Session) -> dict[int, int]:
     rows = session.execute(
         select(VocabSet.owner_id, func.count(VocabEntry.id))
         .join(VocabEntry, VocabEntry.set_id == VocabSet.id, isouter=True)
+        .where(VocabSet.deleted_at.is_(None))
         .group_by(VocabSet.owner_id)
     ).all()
     return {owner_id: count for owner_id, count in rows}
@@ -44,11 +45,19 @@ def _overview(session: Session) -> dict:
             .order_by(PasswordResetToken.created_at.desc())
         )
     )
+    trashed_sets = list(
+        session.scalars(
+            select(VocabSet)
+            .where(VocabSet.deleted_at.is_not(None))
+            .order_by(VocabSet.deleted_at.desc())
+        )
+    )
     return {
         "users": users,
         "entry_counts": counts,
         "open_requests": open_requests,
         "languages": list(session.scalars(select(Language).order_by(Language.name))),
+        "trashed_sets": trashed_sets,
     }
 
 
@@ -171,6 +180,84 @@ def make_reset_link(
     context["mail_sent"] = mail_sent
     # Der Link bleibt auch dann sichtbar, wenn die Mail rausging — ein
     # fehlgeschlagener Versand soll keine Sackgasse sein.
+    return render(request, "admin.html", context, user=admin)
+
+
+@router.post("/sets/{set_id}/restore")
+def restore_set(
+    request: Request,
+    set_id: int,
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    if not auth.csrf_valid(request, csrf_token):
+        return RedirectResponse("/admin", status_code=303)
+    vocab_set = session.get(VocabSet, set_id)
+    if vocab_set is not None and vocab_set.deleted_at is not None:
+        vocab_set.deleted_at = None
+        session.commit()
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/sets/{set_id}/purge")
+def purge_set(
+    request: Request,
+    set_id: int,
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Endgültig löschen geht nur aus dem Papierkorb heraus — nie direkt."""
+    if not auth.csrf_valid(request, csrf_token):
+        return RedirectResponse("/admin", status_code=303)
+    vocab_set = session.get(VocabSet, set_id)
+    if vocab_set is not None and vocab_set.deleted_at is not None:
+        session.delete(vocab_set)
+        session.commit()
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/users/{user_id}/password")
+def set_password(
+    request: Request,
+    user_id: int,
+    new_password: str = Form(...),
+    require_change: str = Form(""),
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Passwort direkt setzen — der kurze Weg, wenn das Kind gerade daneben steht."""
+    if not auth.csrf_valid(request, csrf_token):
+        return RedirectResponse("/admin", status_code=303)
+    target = session.get(User, user_id)
+    if target is None:
+        return RedirectResponse("/admin", status_code=303)
+
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        context = _overview(session)
+        context["error"] = (
+            f"Das Passwort braucht mindestens {MIN_PASSWORD_LENGTH} Zeichen."
+        )
+        return render(request, "admin.html", context, user=admin, status_code=400)
+
+    target.password_hash = auth.hash_password(new_password)
+    target.must_change_password = bool(require_change)
+
+    # Offene Reset-Links des Nutzers wären sonst ein zweiter, vergessener Zugang.
+    now = datetime.now(timezone.utc)
+    for token_row in session.scalars(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == target.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+    ):
+        token_row.used_at = now
+    session.commit()
+
+    context = _overview(session)
+    context["password_set_for"] = target.username
     return render(request, "admin.html", context, user=admin)
 
 

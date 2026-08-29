@@ -3,6 +3,22 @@
 {% block content %}
 <h1>Verwaltung</h1>
 
+{% if trashed_sets %}
+<div class="msg warn">
+  <p>🗑️ Im <a href="#papierkorb">Papierkorb</a>
+    {% if trashed_sets|length == 1 %}liegt ein gelöschtes Set{% else %}liegen
+    {{ trashed_sets|length }} gelöschte Sets{% endif %} —
+    wiederherstellen oder endgültig löschen.</p>
+</div>
+{% endif %}
+
+{% if password_set_for %}
+<div class="msg ok">
+  <p>Passwort für <strong>{{ password_set_for }}</strong> gesetzt. Offene Reset-Links
+    dieses Benutzers sind damit ungültig.</p>
+</div>
+{% endif %}
+
 {% if generated_link %}
 <div class="msg ok">
   <p>Reset-Link für <strong>{{ generated_for }}</strong> — gilt 24 Stunden und lässt sich
@@ -47,6 +63,17 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="small">Reset-Link</button>
       </form>
+      <details class="inline">
+        <summary class="small">Passwort setzen</summary>
+        <form method="post" action="/admin/users/{{ u.id }}/password" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="text" name="new_password" required minlength="8"
+                 placeholder="mind. 8 Zeichen">
+          <label class="check"><input type="checkbox" name="require_change" value="1"
+                 checked> Wechsel bei nächster Anmeldung verlangen</label>
+          <button type="submit" class="small">Setzen</button>
+        </form>
+      </details>
       {% if u.id != user.id %}
         <a class="small danger" href="/admin/users/{{ u.id }}/delete">Löschen</a>
       {% endif %}
@@ -65,6 +92,38 @@
   <button type="submit">Anlegen</button>
   <p class="muted">Der Benutzer muss das Passwort beim ersten Anmelden ändern.</p>
 </form>
+
+<h2 id="papierkorb">Papierkorb</h2>
+{% if trashed_sets %}
+<table>
+  <tr><th>Set</th><th>Besitzer</th><th>Sprache</th><th>Vokabeln</th><th>Gelöscht am</th><th></th></tr>
+  {% for s in trashed_sets %}
+  <tr>
+    <td>{{ s.name }}
+      {% if s.description %}<div class="muted">{{ s.description }}</div>{% endif %}
+    </td>
+    <td>{{ s.owner.username }}</td>
+    <td>{{ s.language.name }}</td>
+    <td>{{ s.entries | length }}</td>
+    <td>{{ s.deleted_at.strftime('%d.%m.%Y %H:%M') }}</td>
+    <td class="actions">
+      <form method="post" action="/admin/sets/{{ s.id }}/restore" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="small">Wiederherstellen</button>
+      </form>
+      <form method="post" action="/admin/sets/{{ s.id }}/purge" class="inline"
+            onsubmit="return confirm('Set „{{ s.name }}“ von {{ s.owner.username }} mit {{ s.entries | length }} Vokabeln ENDGÜLTIG löschen? Das lässt sich nicht rückgängig machen.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="small danger">Endgültig löschen</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">Der Lernfortschritt bleibt beim Wiederherstellen erhalten.</p>
+{% else %}
+<p class="muted">Leer. Von Benutzern gelöschte Sets landen zuerst hier.</p>
+{% endif %}
 
 <h2>Sprachen</h2>
 <table>
