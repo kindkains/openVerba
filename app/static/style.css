@@ -123,6 +123,16 @@ input[type="text"], input[type="password"], input[type="email"], select {
 
 label.check input { width: auto; margin: 0; }
 
+fieldset.sets {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+fieldset.sets legend { padding: 0 0.3rem; font-size: 0.9rem; }
+fieldset.sets p.muted { margin: 0.4rem 0 0.4rem; }
+fieldset.sets label.check { color: var(--text); font-size: 1rem; margin-bottom: 0.5rem; }
+
 button, .button {
   display: inline-block;
   padding: 0.55rem 1.1rem;

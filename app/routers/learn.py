@@ -38,6 +38,7 @@ router = APIRouter(prefix="/learn")
 ROUND_COOKIE = "openverba_round"
 
 SCOPE_SET = "set"
+SCOPE_SETS = "sets"  # die im Startformular angehakten Sets
 SCOPE_LANGUAGE = "language"
 SCOPE_GLOBAL = "global"
 
@@ -77,15 +78,16 @@ def _store_round(response, data: dict) -> None:
 
 
 def _entries_for_scope(
-    session: Session, user: User, scope: str, scope_id: int
+    session: Session, user: User, scope: str, scope_ids: list[int]
 ) -> list[VocabEntry]:
     query = (
         select(VocabEntry)
         .join(VocabSet, VocabEntry.set_id == VocabSet.id)
         .where(VocabSet.deleted_at.is_(None))
     )
-    if scope == SCOPE_SET:
-        query = query.where(VocabSet.id == scope_id, VocabSet.owner_id == user.id)
+    scope_id = scope_ids[0]
+    if scope in (SCOPE_SET, SCOPE_SETS):
+        query = query.where(VocabSet.id.in_(scope_ids), VocabSet.owner_id == user.id)
     elif scope == SCOPE_LANGUAGE:
         query = query.where(
             VocabSet.language_id == scope_id, VocabSet.owner_id == user.id
@@ -124,7 +126,9 @@ def start_form(
 ):
     sets = list(
         session.scalars(
-            select(VocabSet).where(VocabSet.owner_id == user.id).order_by(VocabSet.name)
+            select(VocabSet)
+            .where(VocabSet.owner_id == user.id, VocabSet.deleted_at.is_(None))
+            .order_by(VocabSet.name)
         )
     )
     languages = list(
@@ -146,7 +150,8 @@ def start_form(
 @router.post("/start")
 def start(
     request: Request,
-    source: str = Form(...),
+    source: str = Form(SCOPE_SETS),
+    set_ids: list[str] = Form([], alias="sets"),
     mode: str = Form(MODE_MIXED),
     size: str = Form(""),
     csrf_token: str = Form(""),
@@ -156,13 +161,20 @@ def start(
     if not auth.csrf_valid(request, csrf_token):
         return RedirectResponse("/learn", status_code=303)
 
-    # source kommt als "scope:id", z.B. "set:3" oder "global:1"
-    scope, _, raw_id = source.partition(":")
-    if not raw_id.isdigit() or scope not in (SCOPE_SET, SCOPE_LANGUAGE, SCOPE_GLOBAL):
-        return RedirectResponse("/learn", status_code=303)
-    scope_id = int(raw_id)
+    # source ist entweder "sets" (dann zählen die angehakten Sets) oder kommt als
+    # "scope:id", z.B. "set:3" oder "global:1"
+    if source == SCOPE_SETS:
+        scope = SCOPE_SETS
+        scope_ids = sorted({int(s) for s in set_ids if s.isdigit()})
+        if not scope_ids:
+            return render(request, "learn_empty.html", {"no_sets_ticked": True}, user=user)
+    else:
+        scope, _, raw_id = source.partition(":")
+        if not raw_id.isdigit() or scope not in (SCOPE_SET, SCOPE_LANGUAGE, SCOPE_GLOBAL):
+            return RedirectResponse("/learn", status_code=303)
+        scope_ids = [int(raw_id)]
 
-    entries = _entries_for_scope(session, user, scope, scope_id)
+    entries = _entries_for_scope(session, user, scope, scope_ids)
     if not entries:
         return render(
             request,
@@ -192,9 +204,10 @@ def start(
                 )
             )
 
-    # Ein einzelnes Set wird immer komplett abgefragt. Die Wunschgröße zählt nur
-    # beim Mischen — alle eigenen Sets einer Sprache oder der gemeinsame Pool.
-    if scope == SCOPE_SET:
+    # Ausgewählte Sets werden immer komplett abgefragt (bis MAX_ROUND_SIZE). Die
+    # Wunschgröße zählt nur beim Mischen — alle eigenen Sets einer Sprache oder der
+    # gemeinsame Pool.
+    if scope in (SCOPE_SET, SCOPE_SETS):
         wanted = len(candidates)
     elif size.strip().isdigit():
         wanted = int(size.strip())

@@ -473,6 +473,75 @@ class TestRundengroesse:
         assert "von 20" in frage.text
 
 
+class TestMehrereSets:
+    def _sets(self, db, language):
+        user = make_user(db)
+        unit1 = make_set(db, user, language, name="Unit 1")
+        unit2 = make_set(db, user, language, name="Unit 2")
+        unit3 = make_set(db, user, language, name="Unit 3")
+        for vocab_set, anzahl in ((unit1, 3), (unit2, 4), (unit3, 5)):
+            for i in range(anzahl):
+                make_entry(db, vocab_set, [f"{vocab_set.name}-{i}"], [f"Wort{i}"])
+        return user, unit1, unit2, unit3
+
+    def _starte(self, client, set_ids, size=None):
+        data = {"source": "sets", "sets": [str(i) for i in set_ids], "mode": "fw",
+                "csrf_token": csrf(client)}
+        if size is not None:
+            data["size"] = size
+        return client.post("/learn/start", data=data, follow_redirects=False)
+
+    def test_startformular_zeigt_checkboxen(self, client, db, language):
+        _, unit1, unit2, _ = self._sets(db, language)
+        login(client)
+        seite = client.get("/learn")
+        assert f'name="sets" value="{unit1.id}"' in seite.text
+        assert f'name="sets" value="{unit2.id}"' in seite.text
+
+    def test_zwei_sets_werden_komplett_abgefragt(self, client, db, language):
+        _, unit1, _, unit3 = self._sets(db, language)
+        login(client)
+        response = self._starte(client, [unit1.id, unit3.id], size="2")
+        assert response.status_code == 303
+        frage = client.get("/learn/question")
+        assert "von 8" in frage.text
+
+    def test_nur_angehakte_sets_kommen_dran(self, client, db, language):
+        _, unit1, unit2, _ = self._sets(db, language)
+        login(client)
+        self._starte(client, [unit1.id, unit2.id])
+        gefragt = set()
+        for _ in range(7):
+            frage = client.get("/learn/question")
+            gefragt.add(frage.text.split("Unit ")[1][0])
+            client.post("/learn/answer", data={"given": "x", "csrf_token": csrf(client)})
+        assert gefragt == {"1", "2"}
+
+    def test_nichts_angehakt_meldet_sich(self, client, db, language):
+        self._sets(db, language)
+        login(client)
+        response = self._starte(client, [])
+        assert response.status_code == 200
+        assert "kein Set angehakt" in response.text
+
+    def test_fremde_sets_werden_ignoriert(self, client, db, language):
+        _, unit1, _, _ = self._sets(db, language)
+        fremd = make_set(db, make_user(db, "anderes"), language, name="Fremd")
+        make_entry(db, fremd, ["foreign"], ["fremd"])
+        login(client)
+        self._starte(client, [unit1.id, fremd.id])
+        frage = client.get("/learn/question")
+        assert "von 3" in frage.text
+
+    def test_papierkorb_sets_fehlen_im_formular(self, client, db, language):
+        _, unit1, _, _ = self._sets(db, language)
+        unit1.deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        login(client)
+        seite = client.get("/learn")
+        assert f'name="sets" value="{unit1.id}"' not in seite.text
+
+
 class TestPapierkorb:
     def _set_mit_vokabel(self, db, language, username="kind"):
         user = make_user(db, username)

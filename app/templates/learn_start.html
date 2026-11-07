@@ -6,14 +6,24 @@
 <form method="post" action="/learn/start" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
+  {% if sets %}
+  <fieldset class="sets">
+    <legend>Welche Sets möchtest du lernen?</legend>
+    {% for language_name, group in sets | groupby("language.name") %}
+    <p class="muted">{{ language_name }}</p>
+    {% for s in group %}
+    <label class="check">
+      <input type="checkbox" name="sets" value="{{ s.id }}"> {{ s.name }}
+    </label>
+    {% endfor %}
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+
   <label>Was möchtest du lernen?
     <select name="source" required>
       {% if sets %}
-      <optgroup label="Einzelnes Set">
-        {% for s in sets %}
-        <option value="set:{{ s.id }}">{{ s.name }} ({{ s.language.name }})</option>
-        {% endfor %}
-      </optgroup>
+      <option value="sets">Die angehakten Sets</option>
       {% endif %}
       <optgroup label="Alle meine Sets einer Sprache">
         {% for l in languages %}
@@ -33,7 +43,7 @@
            max="{{ max_round_size }}">
   </label>
   <p class="muted">Die Zahl gilt beim Mischen — alle Sets einer Sprache oder der
-    gemeinsame Pool. Ein einzelnes Set wird immer komplett abgefragt.</p>
+    gemeinsame Pool. Angehakte Sets werden immer komplett abgefragt.</p>
 
   <label>Abfragerichtung
     <select name="mode">

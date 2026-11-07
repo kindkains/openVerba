@@ -3,8 +3,12 @@
 {% block content %}
 <h1>Hier ist noch nichts</h1>
 <p class="muted">
+  {% if no_sets_ticked %}
+  Du hast kein Set angehakt. Hak mindestens eins an — oder wähl unten „Alles auf …“.
+  {% else %}
   In dieser Auswahl stecken keine Vokabeln. Leg zuerst welche an — oder such dir eine
   andere Quelle aus.
+  {% endif %}
 </p>
 <p>
   <a class="button" href="/sets">Vokabeln anlegen</a>
