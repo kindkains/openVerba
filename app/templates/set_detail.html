@@ -6,7 +6,8 @@
 <p class="msg warn">Dieses Set gehört <strong>{{ vocab_set.owner.username }}</strong> —
   du bearbeitest es als Admin.</p>
 {% endif %}
-<p class="muted">{{ vocab_set.language.name }}{% if vocab_set.description %} &middot; {{ vocab_set.description }}{% endif %}</p>
+<p class="muted">{{ vocab_set.language.name }}{% if vocab_set.description %} &middot; {{ vocab_set.description }}{% endif %}
+  &middot; <a href="/sets/{{ vocab_set.id }}/edit">Set bearbeiten</a></p>
 
 <h2>Neue Vokabel</h2>
 <form method="post" action="/sets/{{ vocab_set.id }}/entries" class="card">
@@ -40,6 +41,7 @@
     <td>{{ e.side(side_de) | map(attribute='text') | join('; ') }}</td>
     <td class="muted">{{ e.note or '' }}</td>
     <td class="actions">
+      <a class="button small" href="/entries/{{ e.id }}/edit">Bearbeiten</a>
       <form method="post" action="/entries/{{ e.id }}/delete" class="inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="small danger">Löschen</button>

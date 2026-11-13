@@ -50,7 +50,11 @@ einstellbar). Beim ersten Anmelden als Admin verlangt openVerba einen Passwortwe
    Abfragen angezeigt wird.
 3. Das Feld **Notiz** nimmt Zusatzinfos auf, die nie abgefragt werden — bei Latein etwa
    die Stammformen `currere, curro, cucurri, cursum`. Sie erscheinen nach der Antwort.
-4. **Lernen** startet eine Einheit. Quelle ist wahlweise ein einzelnes Set, alle eigenen
+4. **Bearbeiten** gibt es für Sets und für einzelne Vokabeln. Beim Set lassen sich Name,
+   Beschreibung und Sprache ändern, die Sprache auch dann, wenn schon Vokabeln drin sind.
+   Eine Vokabel lässt sich korrigieren und in ein anderes eigenes Set verschieben, auch in
+   eines mit anderer Sprache. Der Lernfortschritt bleibt dabei jedes Mal erhalten.
+5. **Lernen** startet eine Einheit. Quelle ist wahlweise ein einzelnes Set, alle eigenen
    Sets einer Sprache oder der gemeinsame Pool aller Benutzer.
 
 ## Wie abgefragt wird

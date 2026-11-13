@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Vokabel bearbeiten &middot; openVerba{% endblock %}
+{% block content %}
+<h1>Vokabel bearbeiten</h1>
+<p class="muted">aus {{ vocab_set.name }} &middot; {{ vocab_set.language.name }}</p>
+{% if user.is_admin and vocab_set.owner_id != user.id %}
+<p class="msg warn">Diese Vokabel gehört <strong>{{ vocab_set.owner.username }}</strong> —
+  du bearbeitest sie als Admin.</p>
+{% endif %}
+{% if error %}<p class="msg error">{{ error }}</p>{% endif %}
+
+<form method="post" action="/entries/{{ entry.id }}/edit" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Fremdsprache
+    <input type="text" name="foreign" required value="{{ form.foreign }}">
+  </label>
+  <label>Deutsch
+    <input type="text" name="german" required value="{{ form.german }}">
+  </label>
+  <label>Notiz (optional, wird nie abgefragt)
+    <input type="text" name="note" value="{{ form.note }}">
+  </label>
+  <label>Set
+    <select name="set_id">
+      {% for s in target_sets %}
+      <option value="{{ s.id }}"{% if s.id == form.set_id %} selected{% endif %}>{{ s.name }} ({{ s.language.name }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Speichern</button>
+  <p class="muted">
+    Mehrere gültige Antworten mit Semikolon trennen, die erste wird beim Abfragen
+    angezeigt. Der Lernfortschritt bleibt beim Korrigieren und Verschieben erhalten.
+  </p>
+</form>
+
+<p><a href="/sets/{{ vocab_set.id }}">Abbrechen</a></p>
+{% endblock %}

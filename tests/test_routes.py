@@ -9,7 +9,15 @@ from sqlalchemy import select
 
 from app.main import app
 
-from app.models import LearnProgress, PasswordResetToken, User, VocabEntry, VocabSet
+from app.models import (
+    SIDE_FOREIGN,
+    Language,
+    LearnProgress,
+    PasswordResetToken,
+    User,
+    VocabEntry,
+    VocabSet,
+)
 from tests.conftest import csrf, login, make_entry, make_set, make_user
 
 
@@ -631,3 +639,207 @@ class TestPapierkorb:
                 f"/admin/sets/{vocab_set.id}/{aktion}", data={"csrf_token": csrf(client)}
             )
             assert response.status_code == 403
+
+
+class TestBearbeiten:
+    """Sets und Vokabeln lassen sich korrigieren, ohne den Lernfortschritt zu verlieren."""
+
+    def _sprache(self, db, code="la", name="Latein"):
+        lang = Language(code=code, name=name, active=True)
+        db.add(lang)
+        db.commit()
+        return lang
+
+    def test_set_umbenennen_und_sprache_wechseln(self, client, db, language):
+        latein = self._sprache(db)
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        make_entry(db, vocab_set, ["currere"], ["laufen"])
+        login(client)
+        assert "Bearbeiten" in client.get("/sets").text
+        assert client.get(f"/sets/{vocab_set.id}/edit").status_code == 200
+        response = client.post(
+            f"/sets/{vocab_set.id}/edit",
+            data={
+                "name": "Lektion 4",
+                "language_id": latein.id,
+                "description": "Verben",
+                "csrf_token": csrf(client),
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        db.expire_all()
+        bestand = db.get(VocabSet, vocab_set.id)
+        assert (bestand.name, bestand.language_id, bestand.description) == (
+            "Lektion 4",
+            latein.id,
+            "Verben",
+        )
+        assert len(bestand.entries) == 1  # Vokabeln ziehen mit
+
+    def test_set_leerer_name_abgelehnt(self, client, db, language):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        login(client)
+        response = client.post(
+            f"/sets/{vocab_set.id}/edit",
+            data={"name": "  ", "language_id": language.id, "csrf_token": csrf(client)},
+        )
+        assert response.status_code == 400
+        db.expire_all()
+        assert db.get(VocabSet, vocab_set.id).name == "Unit 1"
+
+    def test_set_unbekannte_sprache_abgelehnt(self, client, db, language):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        login(client)
+        response = client.post(
+            f"/sets/{vocab_set.id}/edit",
+            data={"name": "X", "language_id": 9999, "csrf_token": csrf(client)},
+        )
+        assert response.status_code == 400
+
+    def test_fremdes_set_nicht_bearbeitbar(self, client, db, language):
+        fremd = make_user(db, "fremd")
+        fremdes_set = make_set(db, fremd, language)
+        make_user(db, "kind")
+        login(client, "kind")
+        client.post(
+            f"/sets/{fremdes_set.id}/edit",
+            data={"name": "Gekapert", "language_id": language.id, "csrf_token": csrf(client)},
+        )
+        db.expire_all()
+        assert db.get(VocabSet, fremdes_set.id).name == "Unit 1"
+
+    def test_eintrag_korrigieren_behaelt_fortschritt(self, client, db, language):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        entry = make_entry(db, vocab_set, ["dgo"], ["Hund"])
+        db.add(LearnProgress(user_id=user.id, entry_id=entry.id, direction="fw", box=4))
+        db.commit()
+        entry_id = entry.id
+        login(client)
+        seite = client.get(f"/entries/{entry_id}/edit")
+        assert seite.status_code == 200
+        assert 'value="dgo"' in seite.text
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={
+                "foreign": "dog; hound",
+                "german": "Hund",
+                "note": "Plural: dogs",
+                "set_id": vocab_set.id,
+                "csrf_token": csrf(client),
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        db.expire_all()
+        bestand = db.get(VocabEntry, entry_id)
+        assert [v.text for v in bestand.side(SIDE_FOREIGN)] == ["dog", "hound"]
+        assert bestand.side(SIDE_FOREIGN)[0].is_primary
+        assert bestand.note == "Plural: dogs"
+        assert db.get(LearnProgress, (user.id, entry_id, "fw")).box == 4
+
+    def test_eintrag_leere_seite_abgelehnt(self, client, db, language):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        entry_id = make_entry(db, vocab_set, ["dog"], ["Hund"]).id
+        login(client)
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={"foreign": "dog", "german": " ; ", "csrf_token": csrf(client)},
+        )
+        assert response.status_code == 400
+
+    def test_eintrag_in_anderes_set_verschieben(self, client, db, language):
+        latein = self._sprache(db)
+        user = make_user(db)
+        englisch = make_set(db, user, language, name="Englisch Unit 1")
+        lateinset = make_set(db, user, latein, name="Lektion 1")
+        entry_id = make_entry(db, lateinset, ["dog"], ["Hund"]).id
+        login(client)
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={
+                "foreign": "dog",
+                "german": "Hund",
+                "set_id": englisch.id,
+                "csrf_token": csrf(client),
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        db.expire_all()
+        assert db.get(VocabEntry, entry_id).set_id == englisch.id
+        assert "dog" not in client.get(f"/sets/{lateinset.id}").text
+        assert "dog" in client.get(f"/sets/{englisch.id}").text
+
+    def test_verschieben_in_fremdes_set_abgelehnt(self, client, db, language):
+        fremd = make_user(db, "fremd")
+        fremdes_set = make_set(db, fremd, language)
+        user = make_user(db, "kind")
+        eigenes = make_set(db, user, language)
+        entry_id = make_entry(db, eigenes, ["dog"], ["Hund"]).id
+        login(client, "kind")
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={
+                "foreign": "dog",
+                "german": "Hund",
+                "set_id": fremdes_set.id,
+                "csrf_token": csrf(client),
+            },
+        )
+        assert response.status_code == 400
+        db.expire_all()
+        assert db.get(VocabEntry, entry_id).set_id == eigenes.id
+
+    def test_verschieben_in_papierkorb_set_abgelehnt(self, client, db, language):
+        user = make_user(db)
+        eigenes = make_set(db, user, language)
+        geloescht = make_set(db, user, language, name="Weg")
+        geloescht.deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        entry_id = make_entry(db, eigenes, ["dog"], ["Hund"]).id
+        login(client)
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={
+                "foreign": "dog",
+                "german": "Hund",
+                "set_id": geloescht.id,
+                "csrf_token": csrf(client),
+            },
+        )
+        assert response.status_code == 400
+
+    def test_fremden_eintrag_nicht_bearbeitbar(self, client, db, language):
+        fremd = make_user(db, "fremd")
+        fremdes_set = make_set(db, fremd, language)
+        entry_id = make_entry(db, fremdes_set, ["dog"], ["Hund"]).id
+        make_user(db, "kind")
+        login(client, "kind")
+        assert client.get(f"/entries/{entry_id}/edit", follow_redirects=False).status_code == 303
+        client.post(
+            f"/entries/{entry_id}/edit",
+            data={"foreign": "cat", "german": "Katze", "csrf_token": csrf(client)},
+        )
+        db.expire_all()
+        assert db.get(VocabEntry, entry_id).side(SIDE_FOREIGN)[0].text == "dog"
+
+    def test_admin_bearbeitet_fremden_eintrag(self, client, db, language):
+        make_user(db, "chef", is_admin=True)
+        fremd = make_user(db, "fremd")
+        fremdes_set = make_set(db, fremd, language)
+        entry_id = make_entry(db, fremdes_set, ["dgo"], ["Hund"]).id
+        login(client, "chef")
+        response = client.post(
+            f"/entries/{entry_id}/edit",
+            data={"foreign": "dog", "german": "Hund", "csrf_token": csrf(client)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        db.expire_all()
+        assert db.get(VocabEntry, entry_id).side(SIDE_FOREIGN)[0].text == "dog"

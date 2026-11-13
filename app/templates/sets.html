@@ -18,6 +18,7 @@
     <td>{{ s.language.name }}</td>
     <td>{{ counts.get(s.id, 0) }}</td>
     <td class="actions">
+      <a class="button small" href="/sets/{{ s.id }}/edit">Bearbeiten</a>
       <form method="post" action="/sets/{{ s.id }}/delete" class="inline"
             onsubmit="return confirm('Set „{{ s.name }}“ mit allen Vokabeln löschen? Der Admin kann es aus dem Papierkorb wiederherstellen.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
