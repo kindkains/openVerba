@@ -24,6 +24,7 @@ from app.models import (
     DIRECTION_BW,
     DIRECTION_FW,
     SIDE_DE,
+    SIDE_EXTRA,
     SIDE_FOREIGN,
     Language,
     LearnProgress,
@@ -103,6 +104,19 @@ def _directions(mode: str, rng: random.Random) -> list[str]:
     if mode == MODE_BW:
         return [DIRECTION_BW]
     return [rng.choice([DIRECTION_FW, DIRECTION_BW])]
+
+
+def _extra_question(entry: VocabEntry) -> tuple[str | None, list[str]]:
+    """Überschrift und Lösungen der dritten Spalte — oder (None, []), wenn sie für diese
+    Vokabel nicht abgefragt wird (Set ohne Überschrift oder Vokabel ohne dritten Wert).
+
+    Die dritte Spalte wird in beiden Richtungen zusätzlich abgefragt.
+    """
+    label = entry.vocab_set.extra_label
+    targets = [v.text for v in entry.side(SIDE_EXTRA)]
+    if not label or not targets:
+        return None, []
+    return label, targets
 
 
 def _progress_map(
@@ -257,6 +271,7 @@ def question(
         "learn_question.html",
         {
             "prompt": entry.prompt(ask_side),
+            "extra_label": _extra_question(entry)[0],
             "direction": direction,
             "position": data["i"] + 1,
             "total": len(data["items"]),
@@ -271,6 +286,7 @@ def question(
 def answer(
     request: Request,
     given: str = Form(""),
+    given_extra: str = Form(""),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
@@ -293,9 +309,18 @@ def answer(
     answer_side = SIDE_DE if direction == DIRECTION_FW else SIDE_FOREIGN
     targets = [v.text for v in entry.side(answer_side)]
 
-    result = checker.check(
-        given, targets, typo_tolerance=get_settings().typo_tolerance
-    )
+    typo_tolerance = get_settings().typo_tolerance
+    result = checker.check(given, targets, typo_tolerance=typo_tolerance)
+
+    # Mit dritter Spalte zählt die Vokabel nur als richtig, wenn beide Felder stimmen.
+    extra_label, extra_targets = _extra_question(entry)
+    extra_result = None
+    if extra_label:
+        extra_result = checker.check(
+            given_extra, extra_targets, typo_tolerance=typo_tolerance
+        )
+    correct = result.correct and (extra_result is None or extra_result.correct)
+    typo = correct and (result.typo or (extra_result is not None and extra_result.typo))
 
     now = datetime.now(timezone.utc)
     row = session.get(LearnProgress, (user.id, entry_id, direction))
@@ -313,10 +338,10 @@ def answer(
         )
         session.add(row)
 
-    row.box = leitner.next_box(row.box, result.correct)
+    row.box = leitner.next_box(row.box, correct)
     row.due_at = leitner.due_after(row.box, now)
     row.last_seen_at = now
-    if result.correct:
+    if correct:
         row.correct_count += 1
         data["ok"] += 1
     else:
@@ -332,6 +357,11 @@ def answer(
             "prompt": entry.prompt(ask_side),
             "given": given,
             "result": result,
+            "correct": correct,
+            "typo": typo,
+            "extra_label": extra_label,
+            "given_extra": given_extra,
+            "extra_result": extra_result,
             "note": entry.note,
             "box": row.box,
             "position": data["i"],

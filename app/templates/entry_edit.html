@@ -17,6 +17,11 @@
   <label>Deutsch
     <input type="text" name="german" required value="{{ form.german }}">
   </label>
+  {% if vocab_set.extra_label or form.extra %}
+  <label>{{ vocab_set.extra_label or 'Dritte Spalte (ruht, Set hat keine Überschrift)' }}
+    <input type="text" name="extra" value="{{ form.extra }}">
+  </label>
+  {% endif %}
   <label>Notiz (optional, wird nie abgefragt)
     <input type="text" name="note" value="{{ form.note }}">
   </label>

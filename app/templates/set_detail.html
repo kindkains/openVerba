@@ -20,6 +20,12 @@
     <input type="text" name="german" required
            value="{{ form.german if form else '' }}" placeholder="rennen; sprinten">
   </label>
+  {% if vocab_set.extra_label %}
+  <label>{{ vocab_set.extra_label }} (optional, wird mit abgefragt)
+    <input type="text" name="extra" value="{{ form.extra if form else '' }}"
+           placeholder="habeo">
+  </label>
+  {% endif %}
   <label>Notiz (optional, wird nie abgefragt)
     <input type="text" name="note" value="{{ form.note if form else '' }}"
            placeholder="currere, curro, cucurri, cursum">
@@ -34,11 +40,14 @@
 <h2>Vokabeln ({{ entries|length }})</h2>
 {% if entries %}
 <table>
-  <tr><th>{{ vocab_set.language.name }}</th><th>Deutsch</th><th>Notiz</th><th></th></tr>
+  <tr><th>{{ vocab_set.language.name }}</th><th>Deutsch</th>
+    {% if vocab_set.extra_label %}<th>{{ vocab_set.extra_label }}</th>{% endif %}
+    <th>Notiz</th><th></th></tr>
   {% for e in entries %}
   <tr>
     <td>{{ e.side(side_foreign) | map(attribute='text') | join('; ') }}</td>
     <td>{{ e.side(side_de) | map(attribute='text') | join('; ') }}</td>
+    {% if vocab_set.extra_label %}<td>{{ e.side(side_extra) | map(attribute='text') | join('; ') }}</td>{% endif %}
     <td class="muted">{{ e.note or '' }}</td>
     <td class="actions">
       <a class="button small" href="/entries/{{ e.id }}/edit">Bearbeiten</a>

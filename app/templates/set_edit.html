@@ -21,6 +21,17 @@
   <label>Beschreibung (optional)
     <input type="text" name="description" value="{{ form.description }}">
   </label>
+  <label>Dritte Spalte (optional)
+    <input type="text" name="extra_label" maxlength="60" value="{{ form.extra_label }}"
+           placeholder="1. Pers. Sg.">
+  </label>
+  <p class="muted">
+    Zum Beispiel „1. Pers. Sg.“ oder „Genitiv“. Steht dann über einem dritten Feld bei
+    jeder Vokabel und wird beim Lernen mit abgefragt. Leer lassen, wenn du keine dritte
+    Spalte brauchst.
+    Leerst du sie später, bleiben die Einträge gespeichert, werden aber nicht mehr
+    abgefragt.
+  </p>
   <button type="submit">Speichern</button>
   <p class="muted">
     Die Sprache lässt sich auch bei einem gefüllten Set umstellen — etwa wenn aus

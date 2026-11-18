@@ -24,6 +24,8 @@ from app.db import Base
 # Seiten einer Vokabel
 SIDE_FOREIGN = "foreign"
 SIDE_DE = "de"
+# Optionale dritte Angabe, z. B. "1. Pers. Sg." -> "habeo". Die Überschrift steht am Set.
+SIDE_EXTRA = "extra"
 
 # Abfragerichtungen: fw = Fremdsprache -> Deutsch, bw = Deutsch -> Fremdsprache
 DIRECTION_FW = "fw"
@@ -98,6 +100,9 @@ class VocabSet(Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Überschrift der optionalen dritten Spalte, z. B. "1. Pers. Sg.". Leer = keine
+    # dritte Spalte; dann wird sie weder angezeigt noch abgefragt.
+    extra_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     # Papierkorb: Löschen setzt nur diesen Stempel. Wiederherstellen und endgültiges
     # Löschen sind Admin-Sache.

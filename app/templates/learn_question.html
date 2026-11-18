@@ -14,8 +14,15 @@
 
   <form method="post" action="/learn/answer">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if extra_label %}<p class="field-label">Übersetzung</p>{% endif %}
     <input type="text" name="given" autofocus autocomplete="off" autocapitalize="off"
            autocorrect="off" spellcheck="false" placeholder="Deine Antwort">
+    {% if extra_label %}
+    {# Kein |safe: Die Überschrift kommt vom Benutzer und muss escaped bleiben. #}
+    <p class="field-label">{{ extra_label }}</p>
+    <input type="text" name="given_extra" autocomplete="off" autocapitalize="off"
+           autocorrect="off" spellcheck="false" placeholder="{{ extra_label }}">
+    {% endif %}
     <button type="submit">Prüfen</button>
   </form>
 </div>

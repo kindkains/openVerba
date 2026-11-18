@@ -218,6 +218,66 @@ def purge_set(
     return RedirectResponse("/admin", status_code=303)
 
 
+def _trashed(session: Session, set_ids: list[int] | None = None) -> list[VocabSet]:
+    """Sets im Papierkorb — alle oder nur die genannten. Was nicht im Papierkorb liegt,
+    fällt hier raus; so kann auch eine manipulierte Auswahl kein aktives Set treffen."""
+    query = select(VocabSet).where(VocabSet.deleted_at.is_not(None))
+    if set_ids is not None:
+        if not set_ids:
+            return []
+        query = query.where(VocabSet.id.in_(set_ids))
+    return list(session.scalars(query))
+
+
+def _parse_ids(raw: list[str]) -> list[int]:
+    return sorted({int(value) for value in raw if value.isdigit()})
+
+
+@router.post("/trash/restore")
+def restore_selected(
+    request: Request,
+    set_ids: list[str] = Form([]),
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    if auth.csrf_valid(request, csrf_token):
+        for vocab_set in _trashed(session, _parse_ids(set_ids)):
+            vocab_set.deleted_at = None
+        session.commit()
+    return RedirectResponse("/admin#papierkorb", status_code=303)
+
+
+@router.post("/trash/purge")
+def purge_selected(
+    request: Request,
+    set_ids: list[str] = Form([]),
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    if auth.csrf_valid(request, csrf_token):
+        for vocab_set in _trashed(session, _parse_ids(set_ids)):
+            session.delete(vocab_set)
+        session.commit()
+    return RedirectResponse("/admin#papierkorb", status_code=303)
+
+
+@router.post("/trash/empty")
+def empty_trash(
+    request: Request,
+    csrf_token: str = Form(""),
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Papierkorb leeren: alles darin endgültig löschen."""
+    if auth.csrf_valid(request, csrf_token):
+        for vocab_set in _trashed(session):
+            session.delete(vocab_set)
+        session.commit()
+    return RedirectResponse("/admin#papierkorb", status_code=303)
+
+
 @router.post("/users/{user_id}/password")
 def set_password(
     request: Request,

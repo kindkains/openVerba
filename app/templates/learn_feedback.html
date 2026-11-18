@@ -5,21 +5,31 @@
   <span>Vokabel {{ position }} von {{ total }}</span>
 </div>
 
-<div class="card quiz {{ 'right' if result.correct else 'wrong' }}">
+<div class="card quiz {{ 'right' if correct else 'wrong' }}">
   <p class="prompt">{{ prompt }}</p>
 
-  {% if result.correct and not result.typo %}
+  {% if correct and not typo %}
     <p class="verdict ok">Richtig!</p>
-  {% elif result.correct and result.typo %}
+  {% elif correct and typo %}
     <p class="verdict warn">Fast — kleiner Tippfehler, zählt als richtig.</p>
+  {% elif extra_result and (result.correct or extra_result.correct) %}
+    <p class="verdict bad">Leider nur halb richtig — es müssen beide Felder stimmen.</p>
   {% else %}
     <p class="verdict bad">Leider falsch.</p>
   {% endif %}
 
-  <p class="muted">Deine Antwort: <em>{{ given or '—' }}</em></p>
-
-  {# Kein |safe: Der Vokabeltext kommt vom Benutzer und muss escaped bleiben. #}
+  {# Kein |safe: Vokabeltexte und Überschrift kommen vom Benutzer und bleiben escaped. #}
+  {% if extra_result %}
+  <p class="muted">Übersetzung {{ '✓' if result.correct else '✗' }} &middot;
+    Deine Antwort: <em>{{ given or '—' }}</em></p>
   <p><strong>Richtig ist:</strong> {{ result.accepted | join(' · ') }}</p>
+  <p class="muted">{{ extra_label }} {{ '✓' if extra_result.correct else '✗' }} &middot;
+    Deine Antwort: <em>{{ given_extra or '—' }}</em></p>
+  <p><strong>Richtig ist:</strong> {{ extra_result.accepted | join(' · ') }}</p>
+  {% else %}
+  <p class="muted">Deine Antwort: <em>{{ given or '—' }}</em></p>
+  <p><strong>Richtig ist:</strong> {{ result.accepted | join(' · ') }}</p>
+  {% endif %}
 
   {% if note %}<p class="note">{{ note }}</p>{% endif %}
 

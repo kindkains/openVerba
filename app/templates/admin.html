@@ -95,10 +95,16 @@
 
 <h2 id="papierkorb">Papierkorb</h2>
 {% if trashed_sets %}
+{# Die Checkboxen gehören über das form-Attribut zum Sammelformular unten — so bleiben
+   die Einzel-Buttons je Zeile eigene Formulare, ohne verschachtelte <form>. #}
 <table>
-  <tr><th>Set</th><th>Besitzer</th><th>Sprache</th><th>Vokabeln</th><th>Gelöscht am</th><th></th></tr>
+  <tr><th><input type="checkbox" id="trash-all" aria-label="Alle auswählen"
+                 title="Alle auswählen"></th>
+    <th>Set</th><th>Besitzer</th><th>Sprache</th><th>Vokabeln</th><th>Gelöscht am</th><th></th></tr>
   {% for s in trashed_sets %}
   <tr>
+    <td><input type="checkbox" name="set_ids" value="{{ s.id }}" form="trash-bulk"
+               class="trash-pick" aria-label="{{ s.name }} auswählen"></td>
     <td>{{ s.name }}
       {% if s.description %}<div class="muted">{{ s.description }}</div>{% endif %}
     </td>
@@ -120,7 +126,44 @@
   </tr>
   {% endfor %}
 </table>
+
+<form method="post" id="trash-bulk" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="small" formaction="/admin/trash/restore"
+          data-needs-pick>Ausgewählte wiederherstellen</button>
+  <button type="submit" class="small danger" formaction="/admin/trash/purge" data-needs-pick
+          data-confirm="Die ausgewählten Sets ENDGÜLTIG löschen? Das lässt sich nicht rückgängig machen.">
+    Ausgewählte endgültig löschen</button>
+</form>
+<form method="post" action="/admin/trash/empty" class="inline"
+      onsubmit="return confirm('Papierkorb leeren? Alle {{ trashed_sets|length }} Sets darin werden ENDGÜLTIG gelöscht. Das lässt sich nicht rückgängig machen.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="small danger">Papierkorb leeren</button>
+</form>
 <p class="muted">Der Lernfortschritt bleibt beim Wiederherstellen erhalten.</p>
+<script>
+  (function () {
+    var all = document.getElementById("trash-all");
+    var picks = document.querySelectorAll(".trash-pick");
+    all.addEventListener("change", function () {
+      picks.forEach(function (box) { box.checked = all.checked; });
+    });
+    document.querySelectorAll("#trash-bulk [data-needs-pick]").forEach(function (button) {
+      button.addEventListener("click", function (event) {
+        var count = document.querySelectorAll(".trash-pick:checked").length;
+        if (count === 0) {
+          event.preventDefault();
+          alert("Bitte erst mindestens ein Set auswählen.");
+          return;
+        }
+        var question = button.getAttribute("data-confirm");
+        if (question && !confirm(count + " Set(s): " + question)) {
+          event.preventDefault();
+        }
+      });
+    });
+  })();
+</script>
 {% else %}
 <p class="muted">Leer. Von Benutzern gelöschte Sets landen zuerst hier.</p>
 {% endif %}

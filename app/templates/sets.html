@@ -43,6 +43,14 @@
     </select>
   </label>
   <label>Beschreibung (optional) <input type="text" name="description"></label>
+  <label>Dritte Spalte (optional)
+    <input type="text" name="extra_label" maxlength="60" placeholder="1. Pers. Sg.">
+  </label>
+  <p class="muted">
+    Zum Beispiel „1. Pers. Sg.“ oder „Genitiv“. Steht dann über einem dritten Feld bei
+    jeder Vokabel und wird beim Lernen mit abgefragt. Leer lassen, wenn du keine dritte
+    Spalte brauchst.
+  </p>
   <button type="submit">Anlegen</button>
 </form>
 {% else %}

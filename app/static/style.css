@@ -223,6 +223,7 @@ code.link {
 .quiz .prompt { font-size: 2rem; font-weight: 600; margin: 0 0 1.25rem; }
 .quiz form { max-width: 22rem; margin: 0 auto; }
 .quiz input[type="text"] { text-align: center; font-size: 1.15rem; margin-bottom: 0.75rem; }
+.quiz .field-label { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.25rem; }
 
 .verdict {
   display: inline-block;

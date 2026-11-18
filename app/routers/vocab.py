@@ -18,6 +18,7 @@ from app.db import get_session
 from app.deps import require_user
 from app.models import (
     SIDE_DE,
+    SIDE_EXTRA,
     SIDE_FOREIGN,
     Language,
     User,
@@ -56,7 +57,10 @@ def _editable_set(session: Session, user: User, set_id: int) -> VocabSet | None:
 
 
 def _write_variants(
-    entry: VocabEntry, foreign_variants: list[str], german_variants: list[str]
+    entry: VocabEntry,
+    foreign_variants: list[str],
+    german_variants: list[str],
+    extra_variants: list[str] | None = None,
 ) -> None:
     """Setzt die Varianten eines Eintrags neu. Die erste je Seite ist die primäre.
 
@@ -69,7 +73,15 @@ def _write_variants(
     ] + [
         VocabVariant(side=SIDE_DE, text=text, is_primary=(index == 0))
         for index, text in enumerate(german_variants)
+    ] + [
+        VocabVariant(side=SIDE_EXTRA, text=text, is_primary=(index == 0))
+        for index, text in enumerate(extra_variants or [])
     ]
+
+
+def _clean_label(raw: str) -> str | None:
+    """Überschrift der dritten Spalte: getrimmt, max. 60 Zeichen, leer = keine Spalte."""
+    return raw.strip()[:60] or None
 
 
 def _language_choices(session: Session, current: Language | None = None) -> list[Language]:
@@ -131,6 +143,7 @@ def create_set(
     name: str = Form(...),
     language_id: int = Form(...),
     description: str = Form(""),
+    extra_label: str = Form(""),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
@@ -143,6 +156,7 @@ def create_set(
         language_id=language_id,
         name=name.strip(),
         description=description.strip() or None,
+        extra_label=_clean_label(extra_label),
     )
     session.add(vocab_set)
     session.commit()
@@ -187,6 +201,7 @@ def edit_set_form(
                 "name": vocab_set.name,
                 "language_id": vocab_set.language_id,
                 "description": vocab_set.description or "",
+                "extra_label": vocab_set.extra_label or "",
             },
         },
         user=user,
@@ -200,6 +215,7 @@ def edit_set(
     name: str = Form(""),
     language_id: int = Form(...),
     description: str = Form(""),
+    extra_label: str = Form(""),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
@@ -221,6 +237,7 @@ def edit_set(
                     "name": name,
                     "language_id": language_id,
                     "description": description,
+                    "extra_label": extra_label,
                 },
             },
             user=user,
@@ -240,6 +257,9 @@ def edit_set(
     vocab_set.name = name.strip()
     vocab_set.language_id = language.id
     vocab_set.description = description.strip() or None
+    # Wird die Überschrift geleert, bleiben die dritten Werte gespeichert, werden aber
+    # weder angezeigt noch abgefragt — bis wieder eine Überschrift gesetzt ist.
+    vocab_set.extra_label = _clean_label(extra_label)
     session.commit()
     return RedirectResponse(f"/sets/{set_id}", status_code=303)
 
@@ -263,6 +283,7 @@ def set_detail(
             "entries": entries,
             "side_foreign": SIDE_FOREIGN,
             "side_de": SIDE_DE,
+            "side_extra": SIDE_EXTRA,
         },
         user=user,
     )
@@ -275,6 +296,7 @@ def add_entry(
     foreign: str = Form(...),
     german: str = Form(...),
     note: str = Form(""),
+    extra: str = Form(""),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
@@ -293,8 +315,14 @@ def add_entry(
                 "entries": entries,
                 "side_foreign": SIDE_FOREIGN,
                 "side_de": SIDE_DE,
+                "side_extra": SIDE_EXTRA,
                 "error": message,
-                "form": {"foreign": foreign, "german": german, "note": note},
+                "form": {
+                    "foreign": foreign,
+                    "german": german,
+                    "note": note,
+                    "extra": extra,
+                },
             },
             user=user,
             status_code=400,
@@ -311,7 +339,9 @@ def add_entry(
         return fail("Die deutsche Seite darf nicht leer sein.")
 
     entry = VocabEntry(set_id=vocab_set.id, note=note.strip() or None)
-    _write_variants(entry, foreign_variants, german_variants)
+    # Ohne Überschrift am Set gibt es keine dritte Spalte — dann wird nichts gespeichert.
+    extra_variants = parse_variants(extra) if vocab_set.extra_label else []
+    _write_variants(entry, foreign_variants, german_variants, extra_variants)
     session.add(entry)
     session.commit()
     return RedirectResponse(f"/sets/{set_id}", status_code=303)
@@ -350,6 +380,7 @@ def edit_entry_form(
                 "foreign": "; ".join(v.text for v in entry.side(SIDE_FOREIGN)),
                 "german": "; ".join(v.text for v in entry.side(SIDE_DE)),
                 "note": entry.note or "",
+                "extra": "; ".join(v.text for v in entry.side(SIDE_EXTRA)),
                 "set_id": vocab_set.id,
             },
         },
@@ -364,6 +395,8 @@ def edit_entry(
     foreign: str = Form(""),
     german: str = Form(""),
     note: str = Form(""),
+    # None = Feld war im Formular gar nicht da (Set ohne Überschrift) -> nicht anfassen.
+    extra: str | None = Form(None),
     set_id: int | None = Form(None),
     csrf_token: str = Form(""),
     user: User = Depends(require_user),
@@ -387,6 +420,7 @@ def edit_entry(
                     "foreign": foreign,
                     "german": german,
                     "note": note,
+                    "extra": extra or "",
                     "set_id": set_id or vocab_set.id,
                 },
             },
@@ -410,7 +444,13 @@ def edit_entry(
         if target is None:
             return fail("In dieses Set lässt sich die Vokabel nicht verschieben.")
 
-    _write_variants(entry, foreign_variants, german_variants)
+    # Der dritte Wert bleibt auch beim Verschieben in ein Set ohne Überschrift erhalten;
+    # dort ruht er nur, bis das Set eine Überschrift bekommt.
+    if extra is None:
+        extra_variants = [v.text for v in entry.side(SIDE_EXTRA)]
+    else:
+        extra_variants = parse_variants(extra)
+    _write_variants(entry, foreign_variants, german_variants, extra_variants)
     entry.note = note.strip() or None
     entry.vocab_set = target
     session.commit()

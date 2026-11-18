@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.main import app
 
 from app.models import (
+    SIDE_EXTRA,
     SIDE_FOREIGN,
     Language,
     LearnProgress,
@@ -17,6 +18,7 @@ from app.models import (
     User,
     VocabEntry,
     VocabSet,
+    VocabVariant,
 )
 from tests.conftest import csrf, login, make_entry, make_set, make_user
 
@@ -843,3 +845,287 @@ class TestBearbeiten:
         assert response.status_code == 303
         db.expire_all()
         assert db.get(VocabEntry, entry_id).side(SIDE_FOREIGN)[0].text == "dog"
+
+
+class TestDritteSpalte:
+    """Optionale dritte Angabe, z. B. habere -> haben + "1. Pers. Sg." habeo."""
+
+    def _latein_set(self, db, language, label="1. Pers. Sg."):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language, name="Verben")
+        vocab_set.extra_label = label
+        db.commit()
+        return user, vocab_set
+
+    def _mit_extra(self, db, vocab_set, extra=("habeo",)):
+        entry = make_entry(db, vocab_set, ["habere"], ["haben"])
+        for index, text in enumerate(extra):
+            db.add(
+                VocabVariant(
+                    entry_id=entry.id, side=SIDE_EXTRA, text=text, is_primary=(index == 0)
+                )
+            )
+        db.commit()
+        return entry
+
+    def _starte(self, client, vocab_set, mode):
+        client.post(
+            "/learn/start",
+            data={"source": f"set:{vocab_set.id}", "mode": mode, "csrf_token": csrf(client)},
+        )
+
+    def _antworte(self, client, given, given_extra=None):
+        data = {"given": given, "csrf_token": csrf(client)}
+        if given_extra is not None:
+            data["given_extra"] = given_extra
+        return client.post("/learn/answer", data=data)
+
+    def test_set_mit_ueberschrift_anlegen(self, client, db, language):
+        make_user(db)
+        login(client)
+        client.post(
+            "/sets",
+            data={
+                "name": "Verben",
+                "language_id": language.id,
+                "extra_label": "  1. Pers. Sg. ",
+                "csrf_token": csrf(client),
+            },
+        )
+        assert db.scalar(select(VocabSet)).extra_label == "1. Pers. Sg."
+
+    def test_ueberschrift_bearbeiten_und_leeren(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language)
+        login(client)
+        assert 'value="1. Pers. Sg."' in client.get(f"/sets/{vocab_set.id}/edit").text
+        client.post(
+            f"/sets/{vocab_set.id}/edit",
+            data={"name": "Verben", "language_id": language.id, "extra_label": "",
+                  "csrf_token": csrf(client)},
+        )
+        db.expire_all()
+        assert db.get(VocabSet, vocab_set.id).extra_label is None
+
+    def test_feld_und_spalte_nur_mit_ueberschrift(self, client, db, language):
+        _, mit = self._latein_set(db, language)
+        ohne = make_set(db, db.get(User, mit.owner_id), language, name="Ohne")
+        self._mit_extra(db, mit)  # Die Tabelle erscheint erst mit Vokabeln
+        login(client)
+        assert 'name="extra"' in client.get(f"/sets/{mit.id}").text
+        assert "<th>1. Pers. Sg.</th>" in client.get(f"/sets/{mit.id}").text
+        assert 'name="extra"' not in client.get(f"/sets/{ohne.id}").text
+
+    def test_vokabel_mit_drittem_wert_anlegen(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language)
+        login(client)
+        client.post(
+            f"/sets/{vocab_set.id}/entries",
+            data={"foreign": "habere", "german": "haben", "extra": "habeo; habeo2",
+                  "csrf_token": csrf(client)},
+        )
+        entry = db.scalar(select(VocabEntry))
+        assert [v.text for v in entry.side(SIDE_EXTRA)] == ["habeo", "habeo2"]
+        assert "habeo; habeo2" in client.get(f"/sets/{vocab_set.id}").text
+
+    def test_ohne_ueberschrift_wird_dritter_wert_ignoriert(self, client, db, language):
+        user = make_user(db)
+        vocab_set = make_set(db, user, language)
+        login(client)
+        client.post(
+            f"/sets/{vocab_set.id}/entries",
+            data={"foreign": "dog", "german": "Hund", "extra": "x", "csrf_token": csrf(client)},
+        )
+        assert db.scalar(select(VocabEntry)).side(SIDE_EXTRA) == []
+
+    def test_dritten_wert_bearbeiten(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set, ("habo",)).id
+        login(client)
+        assert 'value="habo"' in client.get(f"/entries/{entry_id}/edit").text
+        client.post(
+            f"/entries/{entry_id}/edit",
+            data={"foreign": "habere", "german": "haben", "extra": "habeo",
+                  "csrf_token": csrf(client)},
+        )
+        db.expire_all()
+        assert [v.text for v in db.get(VocabEntry, entry_id).side(SIDE_EXTRA)] == ["habeo"]
+
+    def test_ruhender_wert_bleibt_beim_bearbeiten_erhalten(self, client, db, language):
+        """Set ohne Überschrift: Feld fehlt im Formular, der Wert darf nicht verschwinden."""
+        _, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        vocab_set.extra_label = None
+        db.commit()
+        login(client)
+        client.post(
+            f"/entries/{entry_id}/edit",
+            data={"foreign": "habere", "german": "haben", "csrf_token": csrf(client)},
+        )
+        db.expire_all()
+        assert [v.text for v in db.get(VocabEntry, entry_id).side(SIDE_EXTRA)] == ["habeo"]
+
+    def test_abfrage_zeigt_zweites_feld(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language)
+        self._mit_extra(db, vocab_set)
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        frage = client.get("/learn/question").text
+        assert "habere" in frage
+        assert 'name="given_extra"' in frage
+        assert "1. Pers. Sg." in frage
+
+    def test_ohne_dritten_wert_kein_zweites_feld(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language)
+        make_entry(db, vocab_set, ["esse"], ["sein"])
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        assert 'name="given_extra"' not in client.get("/learn/question").text
+
+    def _box(self, db, user, entry_id, direction):
+        db.expire_all()
+        return db.get(LearnProgress, (user.id, entry_id, direction))
+
+    def test_beides_richtig_zaehlt(self, client, db, language):
+        user, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        antwort = self._antworte(client, "haben", "habeo")
+        assert "Richtig!" in antwort.text
+        assert self._box(db, user, entry_id, "fw").box == 2
+
+    def test_rueckrichtung_fragt_auch_dritten_wert(self, client, db, language):
+        user, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        login(client)
+        self._starte(client, vocab_set, "bw")
+        frage = client.get("/learn/question").text
+        assert "haben" in frage and 'name="given_extra"' in frage
+        assert "Richtig!" in self._antworte(client, "habere", "habeo").text
+        assert self._box(db, user, entry_id, "bw").box == 2
+
+    def test_nur_uebersetzung_richtig_ist_falsch(self, client, db, language):
+        user, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        antwort = self._antworte(client, "haben", "habemus")
+        assert "halb richtig" in antwort.text
+        assert "habeo" in antwort.text  # Lösung wird gezeigt
+        row = self._box(db, user, entry_id, "fw")
+        assert (row.box, row.wrong_count) == (1, 1)
+
+    def test_nur_dritter_wert_richtig_ist_falsch(self, client, db, language):
+        user, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        assert "halb richtig" in self._antworte(client, "besitzen", "habeo").text
+        assert self._box(db, user, entry_id, "fw").wrong_count == 1
+
+    def test_dritter_wert_leer_gelassen_ist_falsch(self, client, db, language):
+        user, vocab_set = self._latein_set(db, language)
+        entry_id = self._mit_extra(db, vocab_set).id
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        self._antworte(client, "haben", "")
+        assert self._box(db, user, entry_id, "fw").wrong_count == 1
+
+    def test_ueberschrift_wird_escaped(self, client, db, language):
+        _, vocab_set = self._latein_set(db, language, label="<b>x</b>")
+        self._mit_extra(db, vocab_set)
+        login(client)
+        self._starte(client, vocab_set, "fw")
+        frage = client.get("/learn/question").text
+        assert "<b>x</b>" not in frage
+        assert "&lt;b&gt;x&lt;/b&gt;" in frage
+
+
+class TestPapierkorbSammelaktionen:
+    def _drei_im_papierkorb(self, db, language):
+        user = make_user(db, "fremd")
+        sets = []
+        for name in ("A", "B", "C"):
+            vocab_set = make_set(db, user, language, name=name)
+            make_entry(db, vocab_set, [f"word{name}"], [f"Wort{name}"])
+            vocab_set.deleted_at = datetime.now(timezone.utc)
+            sets.append(vocab_set)
+        aktiv = make_set(db, user, language, name="Aktiv")
+        db.commit()
+        make_user(db, "chef", is_admin=True)
+        return [s.id for s in sets], aktiv.id
+
+    def _ids(self, db):
+        db.expire_all()
+        return set(db.scalars(select(VocabSet.id)))
+
+    def test_admin_seite_zeigt_auswahl_und_leeren(self, client, db, language):
+        self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        seite = client.get("/admin").text
+        assert 'name="set_ids"' in seite
+        assert "Papierkorb leeren" in seite
+        assert "Ausgewählte wiederherstellen" in seite
+
+    def test_mehrere_wiederherstellen(self, client, db, language):
+        (a, b, c), _ = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        client.post(
+            "/admin/trash/restore", data={"set_ids": [str(a), str(c)], "csrf_token": csrf(client)}
+        )
+        db.expire_all()
+        assert db.get(VocabSet, a).deleted_at is None
+        assert db.get(VocabSet, c).deleted_at is None
+        assert db.get(VocabSet, b).deleted_at is not None
+
+    def test_mehrere_endgueltig_loeschen(self, client, db, language):
+        (a, b, c), aktiv = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        client.post(
+            "/admin/trash/purge", data={"set_ids": [str(a), str(b)], "csrf_token": csrf(client)}
+        )
+        assert self._ids(db) == {c, aktiv}
+
+    def test_sammelloeschen_trifft_keine_aktiven_sets(self, client, db, language):
+        (a, b, c), aktiv = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        client.post(
+            "/admin/trash/purge", data={"set_ids": [str(aktiv)], "csrf_token": csrf(client)}
+        )
+        assert aktiv in self._ids(db)
+
+    def test_leere_auswahl_tut_nichts(self, client, db, language):
+        (a, b, c), aktiv = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        client.post("/admin/trash/purge", data={"csrf_token": csrf(client)})
+        assert self._ids(db) == {a, b, c, aktiv}
+
+    def test_papierkorb_leeren(self, client, db, language):
+        _, aktiv = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        response = client.post(
+            "/admin/trash/empty", data={"csrf_token": csrf(client)}, follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert self._ids(db) == {aktiv}
+        # Vokabeln der gelöschten Sets sind mit weg
+        assert db.scalar(select(VocabEntry)) is None
+
+    def test_leeren_ohne_csrf_wirkungslos(self, client, db, language):
+        ids, aktiv = self._drei_im_papierkorb(db, language)
+        login(client, "chef")
+        client.post("/admin/trash/empty", data={"csrf_token": ""})
+        assert self._ids(db) == {*ids, aktiv}
+
+    def test_normaler_benutzer_darf_nicht(self, client, db, language):
+        ids, aktiv = self._drei_im_papierkorb(db, language)
+        make_user(db, "kind")
+        login(client, "kind")
+        for aktion in ("restore", "purge"):
+            response = client.post(
+                f"/admin/trash/{aktion}",
+                data={"set_ids": [str(i) for i in ids], "csrf_token": csrf(client)},
+            )
+            assert response.status_code == 403
+        assert client.post("/admin/trash/empty", data={"csrf_token": csrf(client)}).status_code == 403
+        assert self._ids(db) == {*ids, aktiv}

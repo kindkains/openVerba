@@ -50,11 +50,17 @@ einstellbar). Beim ersten Anmelden als Admin verlangt openVerba einen Passwortwe
    Abfragen angezeigt wird.
 3. Das Feld **Notiz** nimmt Zusatzinfos auf, die nie abgefragt werden — bei Latein etwa
    die Stammformen `currere, curro, cucurri, cursum`. Sie erscheinen nach der Antwort.
-4. **Bearbeiten** gibt es für Sets und für einzelne Vokabeln. Beim Set lassen sich Name,
+4. **Dritte Spalte (optional):** Bekommt ein Set eine Überschrift für die dritte Spalte,
+   zum Beispiel „1. Pers. Sg.“, hat jede Vokabel darin ein zusätzliches Feld:
+   `habere` ↔ `haben` + `habeo`. Beim Lernen wird es in beiden Richtungen mit abgefragt
+   und hat ein eigenes Eingabefeld mit der Überschrift darüber. Richtig ist die Vokabel
+   nur, wenn beide Felder stimmen. Vokabeln ohne dritten Wert werden wie gewohnt
+   abgefragt. Wird die Überschrift geleert, bleiben die Werte gespeichert, ruhen aber.
+5. **Bearbeiten** gibt es für Sets und für einzelne Vokabeln. Beim Set lassen sich Name,
    Beschreibung und Sprache ändern, die Sprache auch dann, wenn schon Vokabeln drin sind.
    Eine Vokabel lässt sich korrigieren und in ein anderes eigenes Set verschieben, auch in
    eines mit anderer Sprache. Der Lernfortschritt bleibt dabei jedes Mal erhalten.
-5. **Lernen** startet eine Einheit. Quelle ist wahlweise ein einzelnes Set, alle eigenen
+6. **Lernen** startet eine Einheit. Quelle ist wahlweise ein einzelnes Set, alle eigenen
    Sets einer Sprache oder der gemeinsame Pool aller Benutzer.
 
 ## Wie abgefragt wird
@@ -94,6 +100,8 @@ Löscht ein Benutzer ein Set, verschwindet es nur aus seiner Sicht und aus allen
 Abfragen — tatsächlich liegt es im Papierkorb. Der Admin sieht das in der Verwaltung,
 kann das Set samt Lernfortschritt wiederherstellen oder es endgültig löschen.
 Endgültiges Löschen geht nur aus dem Papierkorb heraus, nie direkt.
+Mehrere Sets lassen sich per Checkbox auswählen und gemeinsam wiederherstellen oder
+endgültig löschen. „Papierkorb leeren“ löscht alles darin auf einmal.
 
 ## Passwort vergessen
 
