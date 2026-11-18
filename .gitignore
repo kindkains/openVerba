@@ -26,3 +26,6 @@ htmlcov/
 # Betriebssystem
 .DS_Store
 Thumbs.db
+
+# Lokale Screenshots, z. B. Feature-Wuensche
+/*.png
